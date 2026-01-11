@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "957083788500",
+    "project_id": "greenguard-5be6a",
+    "storage_bucket": "greenguard-5be6a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:957083788500:android:068187fb2e96f1ea1c0741",
+        "android_client_info": {
+          "package_name": "eu.greenguardapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZEf1hvLhWGODr_WbOFZU6U2esvVZpj9Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

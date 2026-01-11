@@ -1,0 +1,487 @@
+{
+  "posts": {
+    "09c8d697-a9fc-4884-8c15-3d0dd2c4c98c": {
+      "reactions": {
+        "cry": [],
+        "love": [],
+        "suprised": [],
+        "laugh": [],
+        "like": [],
+        "angry": [],
+        "sad": []
+      },
+      "commentCount": 0,
+      "mentions": [],
+      "postText": "They see me ridin, they hatin 🎶🎶🎶",
+      "authorID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+      "id": "09c8d697-a9fc-4884-8c15-3d0dd2c4c98c",
+      "author": {
+        "phone": "",
+        "position": {
+          "latitude": 37.310213181333424,
+          "longitude": -121.79084818092582
+        },
+        "hasComputedRcommendations": true,
+        "lastOnlineTimestamp": 1655679935,
+        "email": "florian@instamobile.io",
+        "firstName": "Florian",
+        "postCount": 6,
+        "appIdentifier": "rn-chat-app",
+        "location": {
+          "longitude": -121.79085533057267,
+          "latitude": 37.31020803779657
+        },
+        "currentRecommendationSize": 4,
+        "userID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "coordinates": {
+          "__datatype__": "geopoint",
+          "value": {
+            "_latitude": 37.310164929898924,
+            "_longitude": -121.79079304887621
+          }
+        },
+        "g": {
+          "geopoint": {
+            "__datatype__": "geopoint",
+            "value": {
+              "_latitude": 37.310164929898924,
+              "_longitude": -121.79079304887621
+            }
+          },
+          "geohash": "9q9kk84eky"
+        },
+        "defaultPaymentKey": "cash",
+        "badgeCount": 0,
+        "pushKitToken": "bce7ac8ff7abcaa33ff1885acafe7fea5df96ec823167e97b222d484b596fa3a",
+        "createdAt": 1646275003,
+        "signUpLocation": {
+          "longitude": -121.79079304887621,
+          "latitude": 37.310164929898924
+        },
+        "id": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "settings": {
+          "gender": "none",
+          "gender_preference": "all",
+          "distance_radius": "unlimited",
+          "show_me": true
+        },
+        "username": "",
+        "outboundFriendshipCount": 111,
+        "inboundFriendshipCount": 113,
+        "mutualFriendshipCount": 110,
+        "pushToken": "flCYa_6QyElavcaulcTivE:APA91bGoToVhyjT1YBxHocKzH986kIhhYP_oy_k1Dam00tt_4ka2hDwIAz5HV8vh_BybTG1mWxllyo5gGhAK8rjuJ8A3BplH-seyhRIRJu-SYonHzwMHrxBsagk-WYsJGAa98e5wp7b3",
+        "profilePictureURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/71C0E633-8D5E-499E-B8FE-029778A6662B.jpg?alt=media&token=9a373869-d807-48e1-8029-83d2f35bfb43",
+        "lastName": "Marcu",
+        "isOnline": true
+      },
+      "location": "Cupertino, CA.",
+      "createdAt": 1646286748,
+      "hashtags": [],
+      "reactionsCount": 0,
+      "postMedia": [
+        {
+          "thumbnailURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/35183EE5-3F13-43B9-ADB6-E99F7C975619.jpg?alt=media&token=dc76af9a-362e-481a-95cf-d7e8674696ff",
+          "url": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/35183EE5-3F13-43B9-ADB6-E99F7C975619.jpg?alt=media&token=dc76af9a-362e-481a-95cf-d7e8674696ff",
+          "type": "image"
+        }
+      ]
+    },
+    "221fc838-b150-4391-9bb7-9e588a655ece": {
+      "commentCount": 0,
+      "hashtags": ["#SanFrancisco"],
+      "id": "221fc838-b150-4391-9bb7-9e588a655ece",
+      "author": {
+        "firstName": "Florian",
+        "lastName": "Marcu",
+        "email": "florian@instamobile.io",
+        "pushKitToken": "bce7ac8ff7abcaa33ff1885acafe7fea5df96ec823167e97b222d484b596fa3a",
+        "currentRecommendationSize": 4,
+        "pushToken": "flCYa_6QyElavcaulcTivE:APA91bGoToVhyjT1YBxHocKzH986kIhhYP_oy_k1Dam00tt_4ka2hDwIAz5HV8vh_BybTG1mWxllyo5gGhAK8rjuJ8A3BplH-seyhRIRJu-SYonHzwMHrxBsagk-WYsJGAa98e5wp7b3",
+        "isOnline": true,
+        "id": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "defaultPaymentKey": "cash",
+        "createdAt": 1646275003,
+        "g": {
+          "geohash": "9q9kk84eky",
+          "geopoint": {
+            "__datatype__": "geopoint",
+            "value": {
+              "_latitude": 37.310164929898924,
+              "_longitude": -121.79079304887621
+            }
+          }
+        },
+        "lastOnlineTimestamp": 1655679935,
+        "username": "",
+        "settings": {
+          "gender": "none",
+          "gender_preference": "all",
+          "distance_radius": "unlimited",
+          "show_me": true
+        },
+        "userID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "badgeCount": 0,
+        "mutualFriendshipCount": 110,
+        "phone": "",
+        "hasComputedRcommendations": true,
+        "outboundFriendshipCount": 111,
+        "position": {
+          "longitude": -121.79084818092582,
+          "latitude": 37.310213181333424
+        },
+        "inboundFriendshipCount": 113,
+        "profilePictureURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/71C0E633-8D5E-499E-B8FE-029778A6662B.jpg?alt=media&token=9a373869-d807-48e1-8029-83d2f35bfb43",
+        "signUpLocation": {
+          "longitude": -121.79079304887621,
+          "latitude": 37.310164929898924
+        },
+        "postCount": 6,
+        "appIdentifier": "rn-chat-app",
+        "location": {
+          "latitude": 37.31020803779657,
+          "longitude": -121.79085533057267
+        },
+        "coordinates": {
+          "__datatype__": "geopoint",
+          "value": {
+            "_latitude": 37.310164929898924,
+            "_longitude": -121.79079304887621
+          }
+        }
+      },
+      "postText": "I left my heart in #SanFrancisco ❤️",
+      "createdAt": 1646286679,
+      "authorID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+      "postMedia": [
+        {
+          "thumbnailURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/77289EA5-AD65-4FB5-81C3-11851711A77E.jpg?alt=media&token=52fa4cec-7475-4566-979a-8f163e77ca9d",
+          "type": "image",
+          "url": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/77289EA5-AD65-4FB5-81C3-11851711A77E.jpg?alt=media&token=52fa4cec-7475-4566-979a-8f163e77ca9d"
+        }
+      ],
+      "mentions": [],
+      "reactionsCount": 0,
+      "reactions": {
+        "laugh": [],
+        "angry": [],
+        "suprised": [],
+        "love": [],
+        "cry": [],
+        "like": [],
+        "sad": []
+      },
+      "location": "Cupertino, CA."
+    },
+    "5a4f5401-c7f2-4294-a64e-365fa5452888": {
+      "id": "5a4f5401-c7f2-4294-a64e-365fa5452888",
+      "hashtags": ["#California"],
+      "reactions": {
+        "sad": [],
+        "cry": [],
+        "suprised": [],
+        "laugh": [],
+        "like": [],
+        "love": [],
+        "angry": []
+      },
+      "authorID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+      "reactionsCount": 0,
+      "createdAt": 1646337257,
+      "commentCount": 0,
+      "author": {
+        "userID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "position": {
+          "latitude": 37.310213181333424,
+          "longitude": -121.79084818092582
+        },
+        "firstName": "Florian",
+        "coordinates": {
+          "__datatype__": "geopoint",
+          "value": {
+            "_latitude": 37.310164929898924,
+            "_longitude": -121.79079304887621
+          }
+        },
+        "createdAt": 1646275003,
+        "mutualFriendshipCount": 110,
+        "username": "",
+        "g": {
+          "geohash": "9q9kk84eky",
+          "geopoint": {
+            "__datatype__": "geopoint",
+            "value": {
+              "_latitude": 37.310164929898924,
+              "_longitude": -121.79079304887621
+            }
+          }
+        },
+        "outboundFriendshipCount": 111,
+        "inboundFriendshipCount": 113,
+        "email": "florian@instamobile.io",
+        "hasComputedRcommendations": true,
+        "lastOnlineTimestamp": 1655679935,
+        "profilePictureURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/71C0E633-8D5E-499E-B8FE-029778A6662B.jpg?alt=media&token=9a373869-d807-48e1-8029-83d2f35bfb43",
+        "appIdentifier": "rn-chat-app",
+        "badgeCount": 0,
+        "pushToken": "flCYa_6QyElavcaulcTivE:APA91bGoToVhyjT1YBxHocKzH986kIhhYP_oy_k1Dam00tt_4ka2hDwIAz5HV8vh_BybTG1mWxllyo5gGhAK8rjuJ8A3BplH-seyhRIRJu-SYonHzwMHrxBsagk-WYsJGAa98e5wp7b3",
+        "signUpLocation": {
+          "longitude": -121.79079304887621,
+          "latitude": 37.310164929898924
+        },
+        "phone": "",
+        "defaultPaymentKey": "cash",
+        "pushKitToken": "bce7ac8ff7abcaa33ff1885acafe7fea5df96ec823167e97b222d484b596fa3a",
+        "lastName": "Marcu",
+        "settings": {
+          "gender_preference": "all",
+          "distance_radius": "unlimited",
+          "gender": "none",
+          "show_me": true
+        },
+        "postCount": 6,
+        "location": {
+          "longitude": -121.79085533057267,
+          "latitude": 37.31020803779657
+        },
+        "id": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "isOnline": true,
+        "currentRecommendationSize": 4
+      },
+      "displayText": "Trip through #California 🔥❤️😍",
+      "postMedia": [
+        {
+          "type": "video",
+          "url": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/451564b0-0269-48ef-a0ad-a66eae4d81ff.mp4?alt=media&token=631391ca-58fb-4a1f-87e1-6bb5f1b73510",
+          "thumbnailURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/thumb-29918237-03FC-466A-9A46-7666D87E85B9-58315-0004DEFDD8609C32.jpeg?alt=media&token=200d78d1-47f7-4eac-ab14-272e1cc67184"
+        }
+      ],
+      "mentions": [],
+      "postText": "Trip through #California 🔥❤️😍"
+    },
+    "d32cbfa8-ac25-4893-a358-bfffd96f583e": {
+      "id": "d32cbfa8-ac25-4893-a358-bfffd96f583e",
+      "hashtags": ["#California"],
+      "reactions": {
+        "sad": [],
+        "cry": [],
+        "suprised": [],
+        "laugh": [],
+        "like": [],
+        "love": [],
+        "angry": []
+      },
+      "authorID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+      "reactionsCount": 0,
+      "createdAt": 1646337257,
+      "commentCount": 0,
+      "author": {
+        "userID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "position": {
+          "latitude": 37.310213181333424,
+          "longitude": -121.79084818092582
+        },
+        "firstName": "Florian",
+        "coordinates": {
+          "__datatype__": "geopoint",
+          "value": {
+            "_latitude": 37.310164929898924,
+            "_longitude": -121.79079304887621
+          }
+        },
+        "createdAt": 1646275003,
+        "mutualFriendshipCount": 110,
+        "username": "",
+        "g": {
+          "geohash": "9q9kk84eky",
+          "geopoint": {
+            "__datatype__": "geopoint",
+            "value": {
+              "_latitude": 37.310164929898924,
+              "_longitude": -121.79079304887621
+            }
+          }
+        },
+        "outboundFriendshipCount": 111,
+        "inboundFriendshipCount": 113,
+        "email": "florian@instamobile.io",
+        "hasComputedRcommendations": true,
+        "lastOnlineTimestamp": 1655679935,
+        "profilePictureURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/71C0E633-8D5E-499E-B8FE-029778A6662B.jpg?alt=media&token=9a373869-d807-48e1-8029-83d2f35bfb43",
+        "appIdentifier": "rn-chat-app",
+        "badgeCount": 0,
+        "pushToken": "flCYa_6QyElavcaulcTivE:APA91bGoToVhyjT1YBxHocKzH986kIhhYP_oy_k1Dam00tt_4ka2hDwIAz5HV8vh_BybTG1mWxllyo5gGhAK8rjuJ8A3BplH-seyhRIRJu-SYonHzwMHrxBsagk-WYsJGAa98e5wp7b3",
+        "signUpLocation": {
+          "longitude": -121.79079304887621,
+          "latitude": 37.310164929898924
+        },
+        "phone": "",
+        "defaultPaymentKey": "cash",
+        "pushKitToken": "bce7ac8ff7abcaa33ff1885acafe7fea5df96ec823167e97b222d484b596fa3a",
+        "lastName": "Marcu",
+        "settings": {
+          "gender_preference": "all",
+          "distance_radius": "unlimited",
+          "gender": "none",
+          "show_me": true
+        },
+        "postCount": 6,
+        "location": {
+          "longitude": -121.79085533057267,
+          "latitude": 37.31020803779657
+        },
+        "id": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "isOnline": true,
+        "currentRecommendationSize": 4
+      },
+      "displayText": "Getting ready for halloween 🔥",
+      "postMedia": [
+        {
+          "type": "video",
+          "url": "https://firebasestorage.googleapis.com/v0/b/instamobile-production-demos.appspot.com/o/pexels-cottonbro-5435217%202.MP4?alt=media&token=aa804f21-b76a-4257-8234-9bdae97d9841",
+          "thumbnailURL": "https://firebasestorage.googleapis.com/v0/b/instamobile-production-demos.appspot.com/o/pexels-cottonbro-5435218.png?alt=media&token=43a7c599-6f8f-44f8-8de0-47b61c41d272"
+        }
+      ],
+      "mentions": [],
+      "postText": "Trip through #California 🔥❤️😍"
+    },
+    "90d48cca-d16c-43a5-8b38-19af925d5b3c": {
+      "createdAt": 1646286492,
+      "postMedia": [
+        {
+          "thumbnailURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/BCACD2D8-8DD8-4E1A-8A88-915E429C0D3C.jpg?alt=media&token=48e9371a-1d36-40d7-84ce-74a25de44222",
+          "type": "image",
+          "url": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/BCACD2D8-8DD8-4E1A-8A88-915E429C0D3C.jpg?alt=media&token=48e9371a-1d36-40d7-84ce-74a25de44222"
+        }
+      ],
+      "reactions": {
+        "angry": [],
+        "cry": [],
+        "laugh": [],
+        "like": [],
+        "suprised": [],
+        "love": [],
+        "sad": []
+      },
+      "postText": "Such a beautiful city #SanFrancisco #California 🔥🔥🔥",
+      "id": "90d48cca-d16c-43a5-8b38-19af925d5b3c",
+      "commentCount": 0,
+      "author": {
+        "lastOnlineTimestamp": 1655679935,
+        "email": "florian@instamobile.io",
+        "lastName": "Marcu",
+        "coordinates": {
+          "__datatype__": "geopoint",
+          "value": {
+            "_latitude": 37.310164929898924,
+            "_longitude": -121.79079304887621
+          }
+        },
+        "mutualFriendshipCount": 110,
+        "profilePictureURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/71C0E633-8D5E-499E-B8FE-029778A6662B.jpg?alt=media&token=9a373869-d807-48e1-8029-83d2f35bfb43",
+        "userID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "defaultPaymentKey": "cash",
+        "createdAt": 1646275003,
+        "location": {
+          "longitude": -121.79085533057267,
+          "latitude": 37.31020803779657
+        },
+        "isOnline": true,
+        "settings": {
+          "distance_radius": "unlimited",
+          "gender": "none",
+          "show_me": true,
+          "gender_preference": "all"
+        },
+        "postCount": 6,
+        "currentRecommendationSize": 4,
+        "appIdentifier": "rn-chat-app",
+        "hasComputedRcommendations": true,
+        "badgeCount": 0,
+        "outboundFriendshipCount": 111,
+        "username": "",
+        "pushKitToken": "bce7ac8ff7abcaa33ff1885acafe7fea5df96ec823167e97b222d484b596fa3a",
+        "g": {
+          "geohash": "9q9kk84eky",
+          "geopoint": {
+            "__datatype__": "geopoint",
+            "value": {
+              "_latitude": 37.310164929898924,
+              "_longitude": -121.79079304887621
+            }
+          }
+        },
+        "signUpLocation": {
+          "longitude": -121.79079304887621,
+          "latitude": 37.310164929898924
+        },
+        "position": {
+          "latitude": 37.310213181333424,
+          "longitude": -121.79084818092582
+        },
+        "pushToken": "flCYa_6QyElavcaulcTivE:APA91bGoToVhyjT1YBxHocKzH986kIhhYP_oy_k1Dam00tt_4ka2hDwIAz5HV8vh_BybTG1mWxllyo5gGhAK8rjuJ8A3BplH-seyhRIRJu-SYonHzwMHrxBsagk-WYsJGAa98e5wp7b3",
+        "phone": "",
+        "inboundFriendshipCount": 113,
+        "id": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+        "firstName": "Florian"
+      },
+      "location": "Cupertino, CA.",
+      "reactionsCount": 0,
+      "authorID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+      "hashtags": ["#SanFrancisco", "#California"],
+      "mentions": []
+    },
+    "fabcc5d0-5437-4459-a165-1e463e8f8464": {
+      "id": "fabcc5d0-5437-4459-a165-1e463e8f8464",
+      "displayText": "Pretty city sunset 🔥🔥🔥 #palmtrees #sunset",
+      "reactionsCount": 0,
+      "authorID": "pOj7GfgGdFdoKTVqSLZq0T5CSPi2",
+      "reactions": {
+        "love": [],
+        "suprised": [],
+        "angry": [],
+        "like": [],
+        "cry": [],
+        "sad": [],
+        "laugh": []
+      },
+      "commentCount": 0,
+      "hashtags": ["#palmtrees", "#sunset"],
+      "postMedia": [
+        {
+          "thumbnailURL": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/thumb-656F67DF-60B4-4EF4-AE64-CF80673AB547-58315-0004DF205430D8F2.jpeg?alt=media&token=3e9b6a39-0c82-4f85-88c6-16e89ce497d8",
+          "type": "video",
+          "url": "https://firebasestorage.googleapis.com:443/v0/b/instamobile-production-demos.appspot.com/o/345d4813-9be8-4dc6-9f9f-611e86767228.mp4?alt=media&token=908d5826-0771-4c60-a90a-bc6fdcb75efa"
+        }
+      ],
+      "createdAt": 1646337402,
+      "mentions": [],
+      "postText": "Pretty city sunset 🔥🔥🔥 #palmtrees #sunset"
+    },
+    "d930a033-afa0-45a8-832c-faca249bb93d": {
+      "displayText": "New adventure #sunset #California ❤️",
+      "id": "d930a033-afa0-45a8-832c-faca249bb93d",
+      "mentions": [],
+      "reactionsCount": 0,
+      "reactions": {
+        "angry": [],
+        "love": [],
+        "suprised": [],
+        "like": [],
+        "cry": [],
+        "laugh": [],
+        "sad": []
+      },
+      "commentCount": 0,
+      "hashtags": ["#sunset", "#California"],
+      "createdAt": 1646337506,
+      "postText": "New adventure #sunset #California ❤️",
+      "postMedia": [
+        {
+          "url": "https://firebasestorage.googleapis.com/v0/b/instamobile-production-demos.appspot.com/o/pexels-kindel-media-9011090.mp4?alt=media&token=9e2d48e2-b36e-4c65-9bdb-79d8019ca5b7",
+          "thumbnailURL": "https://firebasestorage.googleapis.com/v0/b/instamobile-production-demos.appspot.com/o/pexels-kindel-media-901191.png?alt=media&token=3d02ae75-0d5f-4330-b217-7ed82ad2294f",
+          "type": "video"
+        }
+      ]
+    }
+  }
+}

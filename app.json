@@ -1,0 +1,24 @@
+{
+  "name": "GreenGuard",
+  "displayName": "Green Guard",
+  "plugins": [
+    "expo-tracking-transparency",
+    "@react-native-google-signin/google-signin"
+  ],
+  "expo": {
+    "android": {
+      "googleServicesFile": "./android/app/google-services.json",
+      "jsEngine": "jsc"
+    },
+    "ios": {
+      "googleServicesFile": "./ios/Instamobile/GoogleService-Info.plist",
+      "jsEngine": "jsc"
+    },
+    "plugins": [
+      "expo-localization",
+
+    
+      "expo-tracking-transparency"
+    ]
+  }
+}
