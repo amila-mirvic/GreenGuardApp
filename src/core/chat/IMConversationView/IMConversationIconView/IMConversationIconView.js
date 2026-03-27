@@ -1,6 +1,5 @@
-import React, { useState, memo, useMemo } from 'react'
-import { View } from 'react-native'
-import { Image } from 'expo-image'
+import React, { memo, useMemo, useState } from 'react'
+import { View, Image } from 'react-native'
 import { useTheme } from '../../../dopebase'
 import dynamicStyles from './styles'
 
@@ -23,13 +22,13 @@ const IMConversationIconView = props => {
   const [secondImgErr, setSecondImgErr] = useState(false)
 
   const firstUri =
-    participants?.[0]?.profilePictureURL &&
+    typeof participants?.[0]?.profilePictureURL === 'string' &&
     participants[0].profilePictureURL.length > 0
       ? participants[0].profilePictureURL
       : defaultAvatar
 
   const secondUri =
-    participants?.[1]?.profilePictureURL &&
+    typeof participants?.[1]?.profilePictureURL === 'string' &&
     participants[1].profilePictureURL.length > 0
       ? participants[1].profilePictureURL
       : defaultAvatar
@@ -50,7 +49,7 @@ const IMConversationIconView = props => {
           <Image
             style={[styles.singleChatItemIcon, imageStyle]}
             onError={() => setImgErr(true)}
-            source={imgErr ? { uri: defaultAvatar } : { uri: firstUri }}
+            source={{ uri: imgErr ? defaultAvatar : firstUri }}
           />
           {!!participants?.[0]?.isOnline && <View style={styles.onlineMark} />}
         </View>
@@ -61,13 +60,12 @@ const IMConversationIconView = props => {
           <Image
             style={[styles.multiPaticipationIcon, styles.bottomIcon]}
             onError={() => setImgErr(true)}
-            source={imgErr ? { uri: defaultAvatar } : { uri: firstUri }}
+            source={{ uri: imgErr ? defaultAvatar : firstUri }}
           />
-          <View style={styles.middleIcon} />
           <Image
             style={[styles.multiPaticipationIcon, styles.topIcon]}
             onError={() => setSecondImgErr(true)}
-            source={secondImgErr ? { uri: defaultAvatar } : { uri: secondUri }}
+            source={{ uri: secondImgErr ? defaultAvatar : secondUri }}
           />
         </View>
       )}

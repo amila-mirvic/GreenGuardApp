@@ -46,8 +46,10 @@ const FeedScreen = props => {
     ingestAdSlots,
     batchSize,
   } = useHomeFeedPosts()
+
   const { groupedStories, myStories, subscribeToStories, loadMoreStories } =
     useStories()
+
   const loading = posts === null
   const { addStory } = useStoryMutations()
   const { deletePost } = usePostMutations()
@@ -61,13 +63,14 @@ const FeedScreen = props => {
   const [willBlur, setWillBlur] = useState(false)
   const [adsManager, setAdsManager] = useState(null)
   const [adsLoaded, setAdsLoaded] = useState(false)
+
   useOnlineStatus(currentUser)
+
   useLayoutEffect(() => {
     const colorSet = theme.colors[appearance]
 
     navigation.setOptions({
       headerTitle: localized('Home'),
-     
       headerRight: () => (
         <View style={styles.doubleNavIcon}>
           {Platform.OS === 'android' && (
@@ -96,8 +99,13 @@ const FeedScreen = props => {
     if (!currentUser?.id) {
       return
     }
+
     const postsUnsubscribe = subscribeToHomeFeedPosts(currentUser?.id)
     const storiesUnsubscribe = subscribeToStories(currentUser?.id)
+
+    loadMorePosts(currentUser?.id)
+    loadMoreStories(currentUser?.id)
+
     return () => {
       postsUnsubscribe && postsUnsubscribe()
       storiesUnsubscribe && storiesUnsubscribe()
@@ -105,7 +113,7 @@ const FeedScreen = props => {
   }, [currentUser?.id])
 
   useEffect(() => {
-    // FacebookAds.InterstitialAdManager.showAd("834318260403282_834371153731326")//"834318260403282_834319513736490")
+    // FacebookAds.InterstitialAdManager.showAd("834318260403282_834371153731326")
     //   .then(didClick => {})
     //   .catch(error => {
     //     alert(error);
@@ -175,15 +183,13 @@ const FeedScreen = props => {
     }).then(result => {
       if (result.canceled !== true) {
         const image = result.assets[0]
-        let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i // match pattern eg: image/jpeg
+        let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i
         let match = pattern.exec(image.uri)
 
         onPostStory({ ...image, type: (match ?? [])[0] })
       }
     })
   }, [ImagePicker, onPostStory])
-
-  
 
   const onCameraClose = useCallback(() => {
     setIsCameraOpen(false)
@@ -243,12 +249,10 @@ const FeedScreen = props => {
 
   const onPostStory = useCallback(
     async file => {
-      // We close down the camera modal, before uploading the story, to make the UX faster
       toggleCamera()
 
       setIsUploadingStory(true)
-      const res = await addStory(file, currentUser)
-      // TODO: handle errors
+      await addStory(file, currentUser)
       setIsUploadingStory(false)
     },
     [toggleCamera, addStory, localized, currentUser],
@@ -268,7 +272,7 @@ const FeedScreen = props => {
         url = item.postMedia[0]?.url || item.postMedia[0]
       }
       try {
-        const result = await Share.share(
+        await Share.share(
           {
             title: 'Share SocialNetwork post.',
             message: item.postText,
@@ -301,7 +305,7 @@ const FeedScreen = props => {
   )
 
   const handleOnEndReached = useCallback(() => {
-    if (posts.length >= batchSize) {
+    if ((posts?.length || 0) >= batchSize) {
       loadMorePosts(currentUser?.id)
     }
   }, [currentUser?.id, posts, loadMorePosts])
@@ -369,4 +373,5 @@ const FeedScreen = props => {
     </View>
   )
 }
+
 export default FeedScreen

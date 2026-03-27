@@ -58,18 +58,16 @@ export const addStoryReaction = async (storyID, userID) => {
 
 export const subscribeToHomeFeedPosts = (userID, callback) => {
   return DocRef(userID)
-    .homeFeedLive.orderBy('createdAt', 'desc')
+    .homeFeedLive
+    .orderBy('createdAt', 'desc')
     .onSnapshot(
       { includeMetadataChanges: true },
       querySnapshot => {
-        if (querySnapshot?.metadata?.fromCache === true) {
-          return
-        }
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
       },
       error => {
         console.log(error)
-        callback([])
+        callback && callback([])
       },
     )
 }
@@ -92,18 +90,16 @@ export const listHomeFeedPosts = async (userID, page = 0, size = 1000) => {
 
 export const subscribeToStories = (userID, callback) => {
   return DocRef(userID)
-    .storiesFeedLive.orderBy('createdAt', 'desc')
+    .storiesFeedLive
+    .orderBy('createdAt', 'desc')
     .onSnapshot(
       { includeMetadataChanges: true },
       querySnapshot => {
-        if (querySnapshot?.metadata?.fromCache === true) {
-          return
-        }
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
       },
       error => {
         console.log(error)
-        callback([])
+        callback && callback([])
       },
     )
 }
@@ -156,18 +152,16 @@ export const addComment = async (commentText, postID, authorID) => {
 
 export const subscribeToComments = (postID, callback) => {
   return DocRef(postID)
-    .commentsLive.orderBy('createdAt', 'desc')
+    .commentsLive
+    .orderBy('createdAt', 'desc')
     .onSnapshot(
       { includeMetadataChanges: true },
       querySnapshot => {
-        if (querySnapshot?.metadata?.fromCache === true) {
-          return
-        }
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
       },
       error => {
         console.log(error)
-        callback([])
+        callback && callback([])
       },
     )
 }
@@ -220,18 +214,16 @@ export const listDiscoverFeedPosts = async (userID, page = 0, size = 1000) => {
 
 export const subscribeToHashtagFeedPosts = (hashtag, callback) => {
   return DocRef(hashtag)
-    .hashtag.orderBy('createdAt', 'desc')
+    .hashtag
+    .orderBy('createdAt', 'desc')
     .onSnapshot(
       { includeMetadataChanges: true },
       querySnapshot => {
-        if (querySnapshot?.metadata?.fromCache === true) {
-          return
-        }
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
       },
       error => {
         console.log(error)
-        callback([])
+        callback && callback([])
       },
     )
 }
@@ -260,18 +252,16 @@ export const listHashtagFeedPosts = async (
 
 export const subscribeToProfileFeedPosts = (userID, callback) => {
   return DocRef(userID)
-    .profileFeedLive.orderBy('createdAt', 'desc')
+    .profileFeedLive
+    .orderBy('createdAt', 'desc')
     .onSnapshot(
       { includeMetadataChanges: true },
       querySnapshot => {
-        if (querySnapshot?.metadata?.fromCache === true) {
-          return
-        }
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
       },
       error => {
         console.log(error)
-        callback([])
+        callback && callback([])
       },
     )
 }
@@ -308,60 +298,17 @@ export const fetchProfile = async (profileID, viewerID) => {
 }
 
 export const hydrateFeedForNewFriendship = async (destUserID, sourceUserID) => {
-  // we take all posts & stories from sourceUserID and populate the feed & stories of destUserID
   const mainFeedDestRef = DocRef(destUserID).mainFeed
   const unsubscribeToSourcePosts = postsRef
     .where('authorID', '==', sourceUserID)
-    .onSnapshot(
-      querySnapshot => {
-        querySnapshot?.forEach(doc => {
-          const post = doc.data()
-          if (post.id) {
-            mainFeedDestRef.doc(post.id).set(post)
-          }
-        })
-        unsubscribeToSourcePosts()
-      },
-      error => {
-        console.log(error)
-      },
-    )
-}
+    .onSnapshot(querySnapshot => {
+      querySnapshot?.forEach(doc => {
+        const post = doc.data()
+        if (post.id) {
+          mainFeedDestRef.doc(post.id).set(post)
+        }
+      })
+    })
 
-export const removeFeedForOldFriendship = async (destUserID, oldFriendID) => {
-  // We remove all posts authored by oldFriendID from destUserID's feed
-  const mainFeedDestRef = DocRef(destUserID).mainFeed
-
-  const unsubscribeToSourcePosts = postsRef
-    .where('authorID', '==', oldFriendID)
-    .onSnapshot(
-      querySnapshot => {
-        querySnapshot?.forEach(doc => {
-          const post = doc.data()
-          if (post.id) {
-            mainFeedDestRef.doc(post.id).delete()
-          }
-        })
-        unsubscribeToSourcePosts()
-      },
-      error => {
-        console.log(error)
-      },
-    )
-}
-
-export const getPost = async postId => {
-  try {
-    const post = await postsRef.doc(postId).get()
-    if (!post.exists) {
-      return { error: 'Post not found', success: false }
-    }
-    return { data: { ...post.data(), id: post.id }, success: true }
-  } catch (error) {
-    console.log(error)
-    return {
-      error: 'Oops! an error occurred. Please try again',
-      success: false,
-    }
-  }
+  return unsubscribeToSourcePosts
 }

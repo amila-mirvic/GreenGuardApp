@@ -76,13 +76,18 @@ const ProfileScreen = props => {
   }, [lastScreenTitle])
 
   useEffect(() => {
-    const postsUnsubscribe = subscribeToProfileFeedPosts(
-      otherUser?.id ?? currentUser?.id,
-    )
+    const profileUserID = otherUser?.id ?? currentUser?.id
+    if (!profileUserID) {
+      return
+    }
+
+    const postsUnsubscribe = subscribeToProfileFeedPosts(profileUserID)
+    loadMorePosts(profileUserID)
+
     return () => {
       postsUnsubscribe && postsUnsubscribe()
     }
-  }, [currentUser?.id])
+  }, [currentUser?.id, otherUser?.id])
 
   const navigateToNotifications = useCallback(() => {
     navigation.navigate(lastScreenTitle + 'Notification', {
@@ -94,6 +99,7 @@ const ProfileScreen = props => {
     const actionType = localActionButtonType
       ? localActionButtonType
       : actionButtonType
+
     if (actionType === 'add') {
       addFriend()
       return
@@ -132,76 +138,71 @@ const ProfileScreen = props => {
     setIsMediaViewerOpen(false)
   }, [setIsMediaViewerOpen])
 
-const startUpload = useCallback(
-  async source => {
-    if (!currentUser?.id) return
+  const startUpload = useCallback(
+    async source => {
+      if (!currentUser?.id) return
 
-    const localUri = source?.path || source?.uri
-    const prevUrl = currentUser?.profilePictureURL
+      const localUri = source?.path || source?.uri
+      const prevUrl = currentUser?.profilePictureURL
 
-    // Optimistic UI: odmah prikaži sliku
-    if (localUri) {
-      dispatch(
-        setUserData({
-          user: {
-            ...currentUser,
-            profilePictureURL: localUri,
-          },
-        }),
-      )
-    }
-
-    try {
-      const uploadRes = await storageAPI.processAndUploadMediaFile(source)
-
-      if (uploadRes?.error || !uploadRes?.downloadURL) {
-        throw new Error(uploadRes?.error || 'Upload did not return downloadURL')
+      if (localUri) {
+        dispatch(
+          setUserData({
+            user: {
+              ...currentUser,
+              profilePictureURL: localUri,
+            },
+          }),
+        )
       }
 
-      const downloadURL = uploadRes.downloadURL
+      try {
+        const uploadRes = await storageAPI.processAndUploadMediaFile(source)
 
-      // ✅ KLJUČNO: await + provjera success
-      const res = await updateUser(currentUser.id, {
-        profilePictureURL: downloadURL,
-      })
+        if (uploadRes?.error || !uploadRes?.downloadURL) {
+          throw new Error(uploadRes?.error || 'Upload did not return downloadURL')
+        }
 
-      if (!res?.success) {
-        throw new Error(res?.error || 'Failed to update Firestore user document')
+        const downloadURL = uploadRes.downloadURL
+
+        const res = await updateUser(currentUser.id, {
+          profilePictureURL: downloadURL,
+        })
+
+        if (!res?.success) {
+          throw new Error(res?.error || 'Failed to update Firestore user document')
+        }
+
+        dispatch(
+          setUserData({
+            user: {
+              ...currentUser,
+              ...(res?.user ?? {}),
+              profilePictureURL: res?.user?.profilePictureURL || downloadURL,
+            },
+          }),
+        )
+      } catch (e) {
+        console.log('startUpload error:', e)
+
+        dispatch(
+          setUserData({
+            user: {
+              ...currentUser,
+              profilePictureURL: prevUrl || defaultAvatar,
+            },
+          }),
+        )
+
+        alert(
+          localized(
+            'Oops! An error occured while trying to upload your profile picture. Please try again.',
+          ),
+        )
       }
-
-      // Final: Redux dobija remote URL koji ostaje i nakon restarta
-      dispatch(
-        setUserData({
-          user: {
-            ...currentUser,
-            ...(res?.user ?? {}),
-            profilePictureURL: res?.user?.profilePictureURL || downloadURL,
-          },
-        }),
-      )
-    } catch (e) {
-      console.log('startUpload error:', e)
-
-      // Rollback
-      dispatch(
-        setUserData({
-          user: {
-            ...currentUser,
-            profilePictureURL: prevUrl || defaultAvatar,
-          },
-        }),
-      )
-
-      alert(
-        localized(
-          'Oops! An error occured while trying to upload your profile picture. Please try again.',
-        ),
-      )
-    }
-  },
-  [currentUser, dispatch, localized],
-)
-
+    },
+    [currentUser, dispatch, localized],
+  )
 
   const removePhoto = useCallback(async () => {
     const res = await updateUser(currentUser.id, {
@@ -220,7 +221,7 @@ const startUpload = useCallback(
         ),
       )
     }
-  }, [updateUser, currentUser, localized])
+  }, [currentUser, localized])
 
   const addFriend = useCallback(async () => {
     if (!currentUser || !user) {
@@ -234,14 +235,11 @@ const startUpload = useCallback(
     navigation.navigate('CreatePost')
   }, [navigation])
 
-  const handleOnEndReached = useCallback(
-    distanceFromEnd => {
-      if (posts.length >= batchSize) {
-        loadMorePosts(otherUser?.id ?? currentUser?.id)
-      }
-    },
-    [loadMorePosts, posts],
-  )
+  const handleOnEndReached = useCallback(() => {
+    if ((posts?.length || 0) >= batchSize) {
+      loadMorePosts(otherUser?.id ?? currentUser?.id)
+    }
+  }, [loadMorePosts, posts, otherUser?.id, currentUser?.id])
 
   const pullToRefreshConfig = {
     refreshing: refreshing,
@@ -289,7 +287,7 @@ const startUpload = useCallback(
         alert(res.error)
       }
     },
-    [deletePost],
+    [deletePost, currentUser?.id],
   )
 
   const onFriendItemPress = useCallback(
@@ -317,7 +315,7 @@ const startUpload = useCallback(
       includeReciprocal: true,
       followEnabled: false,
     })
-  }, [navigation, lastScreenTitle, stackKeyTitle])
+  }, [navigation, lastScreenTitle, stackKeyTitle, localized, otherUser])
 
   const onFeedUserItemPress = useCallback(
     async author => {
@@ -330,7 +328,7 @@ const startUpload = useCallback(
         lastScreenTitle: 'Profile',
       })
     },
-    [navigation, lastScreenTitle, stackKeyTitle],
+    [navigation, lastScreenTitle, stackKeyTitle, otherUser?.id, currentUser?.id],
   )
 
   const onMediaPress = useCallback(
@@ -350,12 +348,13 @@ const startUpload = useCallback(
         lastScreenTitle: 'Profile',
       })
     },
-    [navigation],
+    [navigation, stackKeyTitle],
   )
 
   const actionType = localActionButtonType
     ? localActionButtonType
     : actionButtonType
+
   const mainButtonTitle =
     actionType === 'settings'
       ? localized('Profile Settings')

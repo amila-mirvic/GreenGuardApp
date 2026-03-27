@@ -1,16 +1,13 @@
 import React, { memo, useMemo } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
-import { useTheme, useTranslations } from '../../dopebase'
+import { useTheme } from '../../dopebase'
 import IMConversationIconView from './IMConversationIconView/IMConversationIconView'
 import { timeFormat } from '../../helpers/timeFormat'
 import dynamicStyles from './styles'
-import { formatMessage } from '../helpers/utils'
-import { IMRichTextView } from '../../mentions'
 
 const IMConversationView = memo(props => {
   const { onChatItemPress, item, user } = props
 
-  const { localized } = useTranslations()
   const { theme, appearance } = useTheme()
   const styles = dynamicStyles(theme, appearance)
 
@@ -20,7 +17,7 @@ const IMConversationView = memo(props => {
   const safeParticipants = useMemo(() => {
     const participants = Array.isArray(item?.participants) ? item.participants : []
 
-    if (item?.admins?.length) {
+    if (Array.isArray(item?.admins) && item.admins.length > 0) {
       return participants
     }
 
@@ -46,12 +43,16 @@ const IMConversationView = memo(props => {
   }, [item?.title, item?.name, safeParticipants])
 
   const safePreview = useMemo(() => {
-    try {
-      return formatMessage(item, localized) || ''
-    } catch (e) {
-      return ''
+    if (typeof item?.lastMessage === 'string' && item.lastMessage.trim().length > 0) {
+      return item.lastMessage
     }
-  }, [item, localized])
+
+    if (typeof item?.content === 'string' && item.content.trim().length > 0) {
+      return item.content
+    }
+
+    return ''
+  }, [item?.lastMessage, item?.content])
 
   const safeTimestamp = useMemo(() => {
     try {
@@ -62,7 +63,7 @@ const IMConversationView = memo(props => {
   }, [item?.updatedAt, item?.lastMessageDate, item?.createdAt])
 
   const handlePress = () => {
-    if (!item) {
+    if (!item?.id && !item?.channelID) {
       return
     }
     onChatItemPress && onChatItemPress(item)
@@ -85,32 +86,12 @@ const IMConversationView = memo(props => {
         </Text>
 
         <View style={styles.content}>
-          <View style={{ flex: 1 }}>
-            <IMRichTextView
-              defaultTextStyle={[
-                styles.message,
-                !markedAsRead && styles.unReadmessage,
-              ]}
-              emailStyle={[
-                styles.message,
-                !markedAsRead && styles.unReadmessage,
-              ]}
-              phoneStyle={[
-                styles.message,
-                !markedAsRead && styles.unReadmessage,
-              ]}
-              hashTagStyle={[
-                styles.message,
-                !markedAsRead && styles.unReadmessage,
-              ]}
-              usernameStyle={[
-                styles.message,
-                !markedAsRead && styles.unReadmessage,
-              ]}
-            >
-              {safePreview || ' '}
-            </IMRichTextView>
-          </View>
+          <Text
+            numberOfLines={1}
+            style={[styles.message, !markedAsRead && styles.unReadmessage, { flex: 1 }]}
+          >
+            {safePreview || ' '}
+          </Text>
 
           {!!safeTimestamp && (
             <Text

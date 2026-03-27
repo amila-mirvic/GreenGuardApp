@@ -22,27 +22,36 @@ export const useChatMessages = () => {
   }
 
   const loadMoreMessages = async channelID => {
-    if (pagination.current.exhausted) {
+    if (!channelID || pagination.current.exhausted) {
       return
     }
+
     const newMessages = await listMessagesAPI(
       channelID,
       pagination.current.page,
       pagination.current.size,
     )
-    if (newMessages?.length === 0) {
+
+    if (!newMessages?.length) {
       pagination.current.exhausted = true
+      return
     }
+
     pagination.current.page += 1
-    setMessages(
+
+    setMessages(prevMessages =>
       hydrateMessagesWithMyReactions(
-        deduplicatedMessages(messages, newMessages, true),
+        deduplicatedMessages(prevMessages, newMessages, true),
         currentUser?.id,
       ),
     )
   }
 
   const subscribeToMessages = channelID => {
+    if (!channelID) {
+      return null
+    }
+
     return subscribeMessagesAPI(channelID, newMessages => {
       setMessages(prevMessages =>
         hydrateMessagesWithMyReactions(
@@ -75,23 +84,26 @@ export const useChatMessages = () => {
   }
 
   const deduplicatedMessages = (oldMessages, newMessages, appendToBottom) => {
-    const oldList = [...(oldMessages ?? [])]
-    const newList = [...(newMessages ?? [])]
+    const oldList = Array.isArray(oldMessages) ? oldMessages.filter(Boolean) : []
+    const newList = Array.isArray(newMessages) ? newMessages.filter(Boolean) : []
 
-    // We merge, dedup and sort the two message lists
-    const all = oldMessages
-      ? appendToBottom
-        ? [...oldList, ...newList]
-        : [...newList, ...oldList]
-      : newList
-    const deduplicatedMessages = all.reduce((acc, curr) => {
-      if (!acc.some(message => message.id === curr.id)) {
+    const all = appendToBottom
+      ? [...oldList, ...newList]
+      : [...newList, ...oldList]
+
+    const deduped = all.reduce((acc, curr) => {
+      const currId = curr?.id
+      if (!currId) return acc
+      if (!acc.some(msg => msg?.id === currId)) {
         acc.push(curr)
       }
       return acc
     }, [])
-    return deduplicatedMessages.sort((a, b) => {
-      return b.createdAt - a.createdAt
+
+    return deduped.sort((a, b) => {
+      const aTime = Number(a?.createdAt || 0)
+      const bTime = Number(b?.createdAt || 0)
+      return bTime - aTime
     })
   }
 
