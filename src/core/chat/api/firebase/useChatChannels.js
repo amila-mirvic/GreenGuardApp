@@ -111,24 +111,26 @@ export const useChatChannels = () => {
   const deleteGroup = async channelID => {
     return await deleteGroupAPI(channelID)
   }
+  
+  
 
-  const deduplicatedChannels = (oldChannels, newChannels, appendToBottom) => {
-    const oldList = oldChannels || []
-    const newList = newChannels || []
+const deduplicatedChannels = (oldChannels, newChannels, appendToBottom) => {
+  const oldList = oldChannels || []
+  const newList = newChannels || []
 
-    const all = oldChannels
-      ? appendToBottom
-        ? [...oldList, ...newList]
-        : [...newList, ...oldList]
-      : newChannels
-    const deduplicatedChannels = all.reduce((acc, curr) => {
-      if (!acc.some(friend => friend.id === curr.id)) {
-        acc.push(curr)
-      }
-      return acc
-    }, [])
-    return deduplicatedChannels
-  }
+  const all = appendToBottom
+    ? [...oldList, ...newList]
+    : [...newList, ...oldList]
+
+  return all.reduce((acc, curr) => {
+    if (curr && !acc.some(friend => friend.id === curr.id)) {
+      acc.push(curr)
+    }
+    return acc
+  }, [])
+}
+
+
 
   return {
     channels,

@@ -478,32 +478,32 @@ const IMChatScreen = memo(props => {
     [setIsRenameDialogVisible],
   )
 
-  const markThreadItemAsReadIfNeeded = channel => {
-    const {
-      id: channelID,
-      lastThreadMessageId,
-      readUserIDs,
-      lastMessage,
-    } = channel
-    const userID = currentUser?.id
-    const isRead = readUserIDs?.includes(userID)
 
-    if (
-      !isRead &&
-      channelID &&
-      lastMessage &&
-      userID &&
-      !readUserIDs.includes(userID)
-    ) {
-      const newReadUserIDs = readUserIDs ? [...readUserIDs, userID] : [userID]
-      markChannelMessageAsRead(
-        channelID,
-        userID,
-        lastThreadMessageId,
-        newReadUserIDs,
-      )
-    }
+
+const markThreadItemAsReadIfNeeded = channel => {
+  const {
+    id: channelID,
+    lastThreadMessageId,
+    readUserIDs,
+    lastMessage,
+  } = channel || {}
+
+  const userID = currentUser?.id
+  const safeReadUserIDs = Array.isArray(readUserIDs) ? readUserIDs : []
+  const isRead = safeReadUserIDs.includes(userID)
+
+  if (!isRead && channelID && lastMessage && userID) {
+    const newReadUserIDs = [...safeReadUserIDs, userID]
+    markChannelMessageAsRead(
+      channelID,
+      userID,
+      lastThreadMessageId,
+      newReadUserIDs,
+    )
   }
+}
+
+
 
   const onChangeTextInput = useCallback(
     text => {

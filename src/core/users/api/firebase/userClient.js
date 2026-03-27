@@ -13,7 +13,6 @@ export const updateUser = async (userID, newData) => {
   try {
     await usersRef.doc(userID).set({ ...dataWithOnlineStatus }, { merge: true })
 
-    // Fetch updated user data from Firestore
     const updatedUserDoc = await usersRef.doc(userID).get()
     const updatedUserData = updatedUserDoc.data()
 
@@ -45,8 +44,18 @@ export const updateOnlineStatus = async userID => {
 
 export const updateProfilePhoto = async (userID, profilePictureURL) => {
   try {
-    await usersRef.doc(userID).update({ profilePictureURL: profilePictureURL })
-    return { success: true }
+    if (!userID) {
+      return { success: false, error: 'Missing userID' }
+    }
+
+    await usersRef.doc(userID).set(
+      {
+        profilePictureURL: profilePictureURL ?? null,
+      },
+      { merge: true },
+    )
+
+    return { success: true, profilePictureURL: profilePictureURL ?? null }
   } catch (error) {
     console.log('updateProfilePhoto error:', error)
     return { success: false, error: error?.message || String(error) }

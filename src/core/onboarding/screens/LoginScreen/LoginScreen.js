@@ -11,7 +11,6 @@ import { useNavigation } from '@react-navigation/core'
 import appleAuth, {
   AppleButton,
 } from '@invertase/react-native-apple-authentication'
-import IMGoogleSignInButton from '../../components/IMGoogleSignInButton/IMGoogleSignInButton'
 import { useDispatch } from 'react-redux'
 import {
   useTheme,
@@ -123,44 +122,6 @@ const LoginScreen = () => {
       })
   }
 
-  const onGoogleButtonPress = () => {
-    setLoading(true)
-    authManager
-      .loginOrSignUpWithGoogle(config)
-      .then(response => {
-        setLoading(false)
-        if (response?.user) {
-          const user = response.user
-          dispatch(setUserData({ user }))
-          Keyboard.dismiss()
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'MainStack', params: { user } }],
-          })
-        } else {
-          setLoading(false)
-          Alert.alert(
-            '',
-            localizedErrorMessage(response.error, localized),
-            [{ text: localized('OK') }],
-            {
-              cancelable: false,
-            },
-          )
-        }
-      })
-      .catch(error => {
-        setLoading(false)
-        Alert.alert(
-          '',
-          localizedErrorMessage(error, localized),
-          [{ text: localized('OK') }],
-          {
-            cancelable: false,
-          },
-        )
-      })
-  }
 
   const onAppleButtonPress = async () => {
     setLoading(true)
@@ -249,44 +210,7 @@ const LoginScreen = () => {
         >
           <Text style={styles.loginText}>{localized('Log In')}</Text>
         </TouchableOpacity>
-        {config.isFacebookAuthEnabled && (
-          <>
-            <Text style={styles.orTextStyle}> {localized('OR')}</Text>
-            <TouchableOpacity
-              style={styles.facebookContainer}
-              onPress={() => onFBButtonPress()}
-            >
-              <Text style={styles.facebookText}>
-                {localized('Login With Facebook')}
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
-        {config.isGoogleAuthEnabled && (
-          <IMGoogleSignInButton
-            containerStyle={styles.googleButtonStyle}
-            onPress={onGoogleButtonPress}
-          />
-        )}
-        {config.isAppleAuthEnabled && appleAuth.isSupported && (
-          <AppleButton
-            cornerRadius={25}
-            style={styles.appleButtonContainer}
-            buttonStyle={appleButtonStyle[appearance]}
-            buttonType={AppleButton.Type.SIGN_IN}
-            onPress={() => onAppleButtonPress()}
-          />
-        )}
-        {config.isSMSAuthEnabled && (
-          <TouchableOpacity
-            style={styles.phoneNumberContainer}
-            onPress={() => navigation.navigate('Sms', { isSigningUp: false })}
-          >
-            <Text style={styles.phoneNumber}>
-              {localized('Login with phone number')}
-            </Text>
-          </TouchableOpacity>
-        )}
+       
         {loading && <ActivityIndicator />}
       </KeyboardAwareScrollView>
     </View>

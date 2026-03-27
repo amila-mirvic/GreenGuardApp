@@ -8,15 +8,16 @@ const IMConversationList = memo(props => {
   const {
     onConversationPress,
     emptyStateConfig,
-    conversations,
-    loading,
-    loadingBottom,
+    conversations = [],
+    loading = false,
+    loadingBottom = false,
     user,
     headerComponent,
     onListEndReached,
-    pullToRefreshConfig,
+    pullToRefreshConfig = {},
   } = props
-  const { refreshing, onRefresh } = pullToRefreshConfig
+
+  const { refreshing = false, onRefresh = () => {} } = pullToRefreshConfig
 
   const { theme, appearance } = useTheme()
   const styles = dynamicStyles(theme, appearance)
@@ -39,7 +40,7 @@ const IMConversationList = memo(props => {
 
   return (
     <FlatList
-      vertical={true}
+      vertical
       style={styles.container}
       showsHorizontalScrollIndicator={false}
       showsVerticalScrollIndicator={false}
@@ -54,11 +55,11 @@ const IMConversationList = memo(props => {
         </View>
       }
       ListFooterComponent={
-        loadingBottom && (
+        loadingBottom ? (
           <View style={styles.loadingFooter}>
             <ActivityIndicator size="small" />
           </View>
-        )
+        ) : null
       }
       refreshing={refreshing}
       onRefresh={onRefresh}

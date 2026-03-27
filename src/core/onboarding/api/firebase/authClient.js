@@ -30,7 +30,6 @@ const mapAuthErrorToErrorCode = error => {
 
 const buildUserDataFromDoc = (uid, docData, fallbackAuthUser) => {
   const safe = docData || {}
-  // Ensure these exist so UI never prints "undefined"
   const firstName = safe.firstName ?? ''
   const lastName = safe.lastName ?? ''
 
@@ -107,13 +106,6 @@ export const logout = () => {
 // Auth: Registration (Email)
 // -------------------------
 
-/**
- * Registers an account (Firebase Auth) + creates Firestore profile (users/{uid})
- * + reserves a username (usernames/{usernameLower}).
- *
- * IMPORTANT: This function is written to ALWAYS resolve (never hang), so the
- * Signup screen never gets stuck in an infinite loader.
- */
 export const registerWithEmail = (userDetails, _appIdentifier) => {
   return new Promise(async resolve => {
     try {
@@ -131,7 +123,6 @@ export const registerWithEmail = (userDetails, _appIdentifier) => {
 
       const uname = normalizeUsername(username)
 
-      // Optional username check (kept because the UI still collects a username)
       if (uname) {
         const usernameCheck = await checkUniqueUsername(uname)
         if (usernameCheck?.taken) {
@@ -144,7 +135,6 @@ export const registerWithEmail = (userDetails, _appIdentifier) => {
         }
       }
 
-      // 1) Create Firebase Auth user
       const authResp = await auth().createUserWithEmailAndPassword(
         String(email || '').trim(),
         String(password || ''),
@@ -156,7 +146,6 @@ export const registerWithEmail = (userDetails, _appIdentifier) => {
         return
       }
 
-      // 2) Create Firestore user profile
       const timestamp = getUnixTimeStamp()
       const userData = {
         id: uid,
@@ -174,7 +163,6 @@ export const registerWithEmail = (userDetails, _appIdentifier) => {
 
       await usersRef.doc(uid).set(userData, { merge: true })
 
-      // 3) Reserve username (if provided)
       if (uname) {
         try {
           await usernamesRef.doc(uname).set(
@@ -185,7 +173,6 @@ export const registerWithEmail = (userDetails, _appIdentifier) => {
             { merge: false },
           )
         } catch (e) {
-          // If username reservation fails (race condition / permissions), rollback
           console.log('[AUTH] username reservation failed. Rolling back...', e)
           try {
             await usersRef.doc(uid).delete()
@@ -203,7 +190,6 @@ export const registerWithEmail = (userDetails, _appIdentifier) => {
     } catch (error) {
       console.log('[AUTH] registerWithEmail error:', error)
 
-      // Best-effort rollback if we managed to create an auth user but failed later.
       try {
         const current = auth().currentUser
         if (current?.uid) {
@@ -220,7 +206,7 @@ export const registerWithEmail = (userDetails, _appIdentifier) => {
 }
 
 // -------------------------
-// Phone Auth (not used in your email signup bugfix)
+// Phone Auth
 // -------------------------
 
 export const onVerificationChanged = _phone => {
@@ -236,11 +222,35 @@ export const loginWithSMSCode = async (_smsCode, _verificationID) => {
 }
 
 // -------------------------
-// Push token (no-op in this repo)
+// Push token
 // -------------------------
 
 export const fetchAndStorePushTokenIfPossible = async _user => {
   return
+}
+
+// -------------------------
+// Profile photo
+// -------------------------
+
+export const updateProfilePhoto = async (userID, profilePictureURL) => {
+  try {
+    if (!userID) {
+      return { success: false, error: 'Missing userID' }
+    }
+
+    await usersRef.doc(userID).set(
+      {
+        profilePictureURL: profilePictureURL ?? null,
+      },
+      { merge: true },
+    )
+
+    return { success: true, profilePictureURL: profilePictureURL ?? null }
+  } catch (e) {
+    console.log('[AUTH] updateProfilePhoto error:', e)
+    return { success: false, error: e?.message || String(e) }
+  }
 }
 
 // -------------------------

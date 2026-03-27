@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react'
+import React, { useState, useRef, useMemo, useEffect } from 'react'
 import {
   View,
   TouchableOpacity,
@@ -22,6 +22,14 @@ export const ProfilePictureSelector = props => {
       ? props.profilePictureURL
       : defaultProfilePhotoURL,
   )
+
+  useEffect(() => {
+  setProfilePictureURL(
+    props.profilePictureURL?.length > 0
+      ? props.profilePictureURL
+      : defaultProfilePhotoURL,
+  )
+}, [props.profilePictureURL])
 
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false)
   const [tappedImage, setTappedImage] = useState([])

@@ -217,17 +217,7 @@ const SignupScreen = () => {
 
         {renderSignupWithEmail()}
 
-        {config.isSMSAuthEnabled && (
-          <>
-            <Text style={styles.orTextStyle}>{localized('OR')}</Text>
-            <TouchableOpacity
-              style={styles.PhoneNumberContainer}
-              onPress={() => navigation.navigate('Sms', { isSigningUp: true })}
-            >
-              <Text>{localized('Sign up with phone number')}</Text>
-            </TouchableOpacity>
-          </>
-        )}
+
 
         <TermsOfUseView
           tosLink={config.tosLink}

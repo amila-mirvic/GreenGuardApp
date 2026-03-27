@@ -11,8 +11,8 @@ export const ConfigProvider = ({ children }) => {
   const { theme } = useTheme()
   const { localized } = useTranslations()
   const config = {
-    isSMSAuthEnabled: true,
-    isGoogleAuthEnabled: true,
+    isSMSAuthEnabled: false,
+    isGoogleAuthEnabled: false,
     isAppleAuthEnabled: true,
     isFacebookAuthEnabled: true,
     forgotPasswordEnabled: true,
