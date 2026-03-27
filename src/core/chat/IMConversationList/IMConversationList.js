@@ -1,4 +1,4 @@
-import React, { memo } from 'react'
+import React, { memo, useMemo } from 'react'
 import { View, FlatList, ActivityIndicator } from 'react-native'
 import { useTheme, EmptyStateView } from '../../dopebase'
 import IMConversationView from '../IMConversationView'
@@ -22,6 +22,14 @@ const IMConversationList = memo(props => {
   const { theme, appearance } = useTheme()
   const styles = dynamicStyles(theme, appearance)
 
+  const safeConversations = useMemo(() => {
+    if (!Array.isArray(conversations)) {
+      return []
+    }
+
+    return conversations.filter(item => item && (item.id || item.channelID))
+  }, [conversations])
+
   const renderConversationView = ({ item }) => (
     <IMConversationView
       onChatItemPress={onConversationPress}
@@ -44,9 +52,9 @@ const IMConversationList = memo(props => {
       style={styles.container}
       showsHorizontalScrollIndicator={false}
       showsVerticalScrollIndicator={false}
-      data={conversations}
+      data={safeConversations}
       renderItem={renderConversationView}
-      keyExtractor={item => `${item.id}`}
+      keyExtractor={(item, index) => `${item?.id || item?.channelID || index}`}
       removeClippedSubviews={false}
       ListHeaderComponent={headerComponent}
       ListEmptyComponent={

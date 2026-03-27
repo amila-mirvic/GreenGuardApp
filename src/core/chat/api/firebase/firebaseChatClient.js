@@ -5,9 +5,18 @@ import { getUnixTimeStamp } from '../../../helpers/timeFormat'
 
 export const subscribeChannels = (userID, callback) => {
   return DocRef(userID)
-    .chatFeedLive.orderBy('createdAt', 'desc')
-    .onSnapshot({ includeMetadataChanges: true }, snapshot =>
-      callback(snapshot?.docs.map(doc => doc.data())),
+    .chatFeedLive
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(
+      { includeMetadataChanges: true },
+      snapshot => {
+        const items = snapshot?.docs?.map(doc => doc.data()) ?? []
+        callback(items)
+      },
+      error => {
+        console.log('subscribeChannels error:', error)
+        callback([])
+      },
     )
 }
 

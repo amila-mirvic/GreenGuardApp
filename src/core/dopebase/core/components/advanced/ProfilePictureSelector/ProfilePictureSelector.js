@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   View,
   TouchableOpacity,
@@ -17,33 +17,25 @@ const defaultProfilePhotoURL =
   'https://www.iosapptemplates.com/wp-content/uploads/2019/06/empty-avatar.jpg'
 
 export const ProfilePictureSelector = props => {
-  const [profilePictureURL, setProfilePictureURL] = useState(
-    props.profilePictureURL?.length > 0
+  const resolvedIncomingURL =
+    typeof props.profilePictureURL === 'string' &&
+    props.profilePictureURL.trim().length > 0
       ? props.profilePictureURL
-      : defaultProfilePhotoURL,
-  )
+      : defaultProfilePhotoURL
 
-  useEffect(() => {
-  setProfilePictureURL(
-    props.profilePictureURL?.length > 0
-      ? props.profilePictureURL
-      : defaultProfilePhotoURL,
-  )
-}, [props.profilePictureURL])
-
+  const [profilePictureURL, setProfilePictureURL] = useState(resolvedIncomingURL)
   const [isImageViewerVisible, setIsImageViewerVisible] = useState(false)
   const [tappedImage, setTappedImage] = useState([])
-
-  // We only want to show a blocking alert if the user actually selected a photo
-  // and the upload/rendering fails. Many apps use a remote default avatar URL;
-  // if that URL fails to load (offline / blocked), we should fall back silently.
   const [hasUserSelectedPhoto, setHasUserSelectedPhoto] = useState(false)
 
   const { localized } = useTranslations()
   const { theme, appearance } = useTheme()
   const styles = dynamicStyles(theme, appearance)
-
   const { showActionSheetWithOptions } = useActionSheet()
+
+  useEffect(() => {
+    setProfilePictureURL(resolvedIncomingURL)
+  }, [resolvedIncomingURL])
 
   const actionSheetOptions = useMemo(() => {
     return {
@@ -56,7 +48,7 @@ export const ProfilePictureSelector = props => {
       cancelButtonIndex: 1,
       destructiveButtonIndex: 2,
     }
-  }, [])
+  }, [localized])
 
   const handleImageClick = url => {
     if (url) {
@@ -83,10 +75,8 @@ export const ProfilePictureSelector = props => {
       profilePictureURL.includes('empty-avatar') ||
       profilePictureURL.includes('avatar')
 
-    // If the default remote avatar fails to load (common in offline/dev environments),
-    // do NOT show an alert. Just fall back to the local placeholder icon.
     if (isDefaultAvatar || !hasUserSelectedPhoto) {
-      setProfilePictureURL(null)
+      setProfilePictureURL(defaultProfilePhotoURL)
       return
     }
 
@@ -99,9 +89,8 @@ export const ProfilePictureSelector = props => {
       { cancelable: true },
     )
 
-    // Back to original photo after erroring out
-    setProfilePictureURL(null)
-    props.setProfilePictureFile?.(null)
+    // samo UI fallback, NIKAD ne briši backend ovdje
+    setProfilePictureURL(defaultProfilePhotoURL)
     setHasUserSelectedPhoto(false)
   }
 
@@ -127,10 +116,9 @@ export const ProfilePictureSelector = props => {
 
     if (result.canceled !== true) {
       const asset = result.assets[0]
-
       setProfilePictureURL(asset.uri)
-      props.setProfilePictureFile(asset)
       setHasUserSelectedPhoto(true)
+      props.setProfilePictureFile?.(asset)
     }
   }
 
@@ -147,18 +135,21 @@ export const ProfilePictureSelector = props => {
   }
 
   const onProfileActionDone = index => {
-    if (index == 0) {
+    if (index === 0) {
       pickImage()
     }
-    if (index == 2) {
-      // Remove button
-      if (profilePictureURL) {
-        setProfilePictureURL(null)
-        props.setProfilePictureFile(null)
-        setHasUserSelectedPhoto(false)
-      }
+
+    if (index === 2) {
+      setProfilePictureURL(defaultProfilePhotoURL)
+      setHasUserSelectedPhoto(false)
+      props.setProfilePictureFile?.(null)
     }
   }
+
+  const displaySource =
+    profilePictureURL && profilePictureURL.length > 0
+      ? { uri: profilePictureURL }
+      : { uri: defaultProfilePhotoURL }
 
   return (
     <>
@@ -168,10 +159,8 @@ export const ProfilePictureSelector = props => {
           onPress={() => handleImageClick(profilePictureURL)}
         >
           <Image
-            style={[styles.image, { opacity: profilePictureURL ? 1 : 0.3 }]}
-            source={
-              profilePictureURL ? { uri: profilePictureURL } : theme.icons.userAvatar
-            }
+            style={[styles.image, { opacity: 1 }]}
+            source={displaySource}
             contentFit="cover"
             onError={onImageError}
           />
@@ -187,7 +176,7 @@ export const ProfilePictureSelector = props => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <ImageView
-          images={[tappedImage]}
+          images={tappedImage?.uri ? [tappedImage] : []}
           visible={isImageViewerVisible}
           onRequestClose={() => setIsImageViewerVisible(false)}
         />

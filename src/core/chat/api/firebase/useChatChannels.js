@@ -31,11 +31,12 @@ export const useChatChannels = () => {
       pagination.current.page,
       pagination.current.size,
     )
+
     if (newChannels?.length === 0) {
       pagination.current.exhausted = true
     }
-    pagination.current.page += 1
 
+    pagination.current.page += 1
     setLoadingBottom(false)
 
     setChannels(oldChannels =>
@@ -62,11 +63,14 @@ export const useChatChannels = () => {
       pagination.current.page,
       pagination.current.size,
     )
+
     if (newChannels?.length === 0) {
       pagination.current.exhausted = true
     }
+
     pagination.current.page += 1
     setRefreshing(false)
+
     setChannels(
       deduplicatedChannels(realtimeChannelsRef.current, newChannels, true),
     )
@@ -111,26 +115,32 @@ export const useChatChannels = () => {
   const deleteGroup = async channelID => {
     return await deleteGroupAPI(channelID)
   }
-  
-  
 
-const deduplicatedChannels = (oldChannels, newChannels, appendToBottom) => {
-  const oldList = oldChannels || []
-  const newList = newChannels || []
+  const deduplicatedChannels = (oldChannels, newChannels, appendToBottom) => {
+    const oldList = Array.isArray(oldChannels) ? oldChannels.filter(Boolean) : []
+    const newList = Array.isArray(newChannels) ? newChannels.filter(Boolean) : []
 
-  const all = appendToBottom
-    ? [...oldList, ...newList]
-    : [...newList, ...oldList]
+    const all = appendToBottom
+      ? [...oldList, ...newList]
+      : [...newList, ...oldList]
 
-  return all.reduce((acc, curr) => {
-    if (curr && !acc.some(friend => friend.id === curr.id)) {
-      acc.push(curr)
-    }
-    return acc
-  }, [])
-}
+    return all.reduce((acc, curr) => {
+      const currId = curr?.id || curr?.channelID
+      if (!currId) {
+        return acc
+      }
 
+      if (!acc.some(friend => (friend?.id || friend?.channelID) === currId)) {
+        acc.push({
+          ...curr,
+          id: currId,
+          participants: Array.isArray(curr?.participants) ? curr.participants : [],
+        })
+      }
 
+      return acc
+    }, [])
+  }
 
   return {
     channels,

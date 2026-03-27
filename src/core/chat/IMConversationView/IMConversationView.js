@@ -1,4 +1,4 @@
-import React, { memo } from 'react'
+import React, { memo, useMemo } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
 import { useTheme, useTranslations } from '../../dopebase'
 import IMConversationIconView from './IMConversationIconView/IMConversationIconView'
@@ -14,38 +14,83 @@ const IMConversationView = memo(props => {
   const { theme, appearance } = useTheme()
   const styles = dynamicStyles(theme, appearance)
 
-  const userID = user.userID || user.id
-  const { markedAsRead } = item
+  const userID = user?.userID || user?.id
+  const markedAsRead = item?.markedAsRead ?? true
 
-  let title = item.title
+  const safeParticipants = useMemo(() => {
+    const participants = Array.isArray(item?.participants) ? item.participants : []
+
+    if (item?.admins?.length) {
+      return participants
+    }
+
+    return participants.filter(value => value?.id !== userID)
+  }, [item?.participants, item?.admins, userID])
+
+  const safeTitle = useMemo(() => {
+    if (typeof item?.title === 'string' && item.title.trim().length > 0) {
+      return item.title
+    }
+
+    if (typeof item?.name === 'string' && item.name.trim().length > 0) {
+      return item.name
+    }
+
+    if (safeParticipants.length > 0) {
+      const p = safeParticipants[0]
+      const fullName = `${p?.firstName || ''} ${p?.lastName || ''}`.trim()
+      return fullName || p?.fullname || p?.username || 'Conversation'
+    }
+
+    return 'Conversation'
+  }, [item?.title, item?.name, safeParticipants])
+
+  const safePreview = useMemo(() => {
+    try {
+      return formatMessage(item, localized) || ''
+    } catch (e) {
+      return ''
+    }
+  }, [item, localized])
+
+  const safeTimestamp = useMemo(() => {
+    try {
+      return timeFormat(item?.updatedAt || item?.lastMessageDate || item?.createdAt)
+    } catch (e) {
+      return ''
+    }
+  }, [item?.updatedAt, item?.lastMessageDate, item?.createdAt])
+
+  const handlePress = () => {
+    if (!item) {
+      return
+    }
+    onChatItemPress && onChatItemPress(item)
+  }
 
   return (
     <TouchableOpacity
-      onPress={() => onChatItemPress(item)}
+      onPress={handlePress}
       style={styles.chatItemContainer}
+      activeOpacity={0.8}
     >
-      <IMConversationIconView
-        participants={
-          item?.admins?.length
-            ? item.participants
-            : item.participants.filter(value => {
-                return value?.id !== userID
-              })
-        }
-      />
+      <IMConversationIconView participants={safeParticipants} />
+
       <View style={styles.chatItemContent}>
         <Text
+          numberOfLines={1}
           style={[styles.chatFriendName, !markedAsRead && styles.unReadmessage]}
         >
-          {title}
+          {safeTitle}
         </Text>
+
         <View style={styles.content}>
-          <Text
-            numberOfLines={1}
-            ellipsizeMode={'middle'}
-            style={[styles.message, !markedAsRead && styles.unReadmessage]}
-          >
+          <View style={{ flex: 1 }}>
             <IMRichTextView
+              defaultTextStyle={[
+                styles.message,
+                !markedAsRead && styles.unReadmessage,
+              ]}
               emailStyle={[
                 styles.message,
                 !markedAsRead && styles.unReadmessage,
@@ -63,17 +108,20 @@ const IMConversationView = memo(props => {
                 !markedAsRead && styles.unReadmessage,
               ]}
             >
-              {formatMessage(item, localized) || ' '}
+              {safePreview || ' '}
             </IMRichTextView>
-            {' • '}
+          </View>
+
+          {!!safeTimestamp && (
             <Text
               numberOfLines={1}
-              ellipsizeMode={'middle'}
+              ellipsizeMode="tail"
               style={[styles.message, !markedAsRead && styles.unReadmessage]}
             >
-              {timeFormat(item.updatedAt || item.createdAt)}
+              {'  •  '}
+              {safeTimestamp}
             </Text>
-          </Text>
+          )}
         </View>
       </View>
     </TouchableOpacity>
