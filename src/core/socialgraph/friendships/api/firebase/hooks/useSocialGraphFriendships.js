@@ -38,27 +38,34 @@ export const useSocialGraphFriendships = () => {
       return
     }
 
-    const newFriendships = await fetchFriendshipsAPI(
-      userID,
-      pagination.current.page,
-      pagination.current.size,
-    )
+    try {
+      const newFriendships = await fetchFriendshipsAPI(
+        userID,
+        pagination.current.page,
+        pagination.current.size,
+      )
 
-    const safeFriendships = Array.isArray(newFriendships) ? newFriendships : []
+      const safeFriendships = Array.isArray(newFriendships) ? newFriendships : []
 
-    if (safeFriendships.length === 0) {
-      if (pagination.current.page === 0) {
+      if (safeFriendships.length === 0) {
+        if (pagination.current.page === 0) {
+          setFriendships(realtimeFriendships.current || [])
+        }
+        pagination.current.exhausted = true
+        return
+      }
+
+      pagination.current.page += 1
+
+      setFriendships(old =>
+        deduplicatedFriendships(old, safeFriendships, true),
+      )
+    } catch (error) {
+      console.log('loadMoreFriendships error:', error)
+      if (friendships == null) {
         setFriendships(realtimeFriendships.current || [])
       }
-      pagination.current.exhausted = true
-      return
     }
-
-    pagination.current.page += 1
-
-    setFriendships(old =>
-      deduplicatedFriendships(old, safeFriendships, true),
-    )
   }
 
   const subscribeToFriendships = userID => {
@@ -75,30 +82,36 @@ export const useSocialGraphFriendships = () => {
   const pullToRefresh = async userID => {
     if (!userID) return
 
-    setRefreshing(true)
-    pagination.current = { page: 0, size: batchSize, exhausted: false }
+    try {
+      setRefreshing(true)
+      pagination.current = { page: 0, size: batchSize, exhausted: false }
 
-    const newFriendships = await fetchFriendshipsAPI(
-      userID,
-      pagination.current.page,
-      pagination.current.size,
-    )
+      const newFriendships = await fetchFriendshipsAPI(
+        userID,
+        pagination.current.page,
+        pagination.current.size,
+      )
 
-    const safeFriendships = Array.isArray(newFriendships) ? newFriendships : []
-    const merged = deduplicatedFriendships(
-      realtimeFriendships.current,
-      safeFriendships,
-      true,
-    )
+      const safeFriendships = Array.isArray(newFriendships) ? newFriendships : []
+      const merged = deduplicatedFriendships(
+        realtimeFriendships.current,
+        safeFriendships,
+        true,
+      )
 
-    if (safeFriendships.length === 0) {
-      pagination.current.exhausted = true
-    } else {
-      pagination.current.page += 1
+      if (safeFriendships.length === 0) {
+        pagination.current.exhausted = true
+      } else {
+        pagination.current.page += 1
+      }
+
+      setFriendships(merged)
+    } catch (error) {
+      console.log('pullToRefresh friendships error:', error)
+      setFriendships(realtimeFriendships.current || [])
+    } finally {
+      setRefreshing(false)
     }
-
-    setFriendships(merged)
-    setRefreshing(false)
   }
 
   return {

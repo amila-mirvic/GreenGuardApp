@@ -1,4 +1,26 @@
+import firestore from '@react-native-firebase/firestore'
 import { DocRef, FeedFunctions, postsRef } from './feedRef'
+
+const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
+const usersRef = firestore().collection('users')
+
+const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
+  let timeoutId
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
 
 export const addPost = async (postData, author) => {
   const instance = FeedFunctions().addPost
@@ -75,11 +97,13 @@ export const subscribeToHomeFeedPosts = (userID, callback) => {
 export const listHomeFeedPosts = async (userID, page = 0, size = 1000) => {
   const instance = FeedFunctions().listHomeFeedPosts
   try {
-    const res = await instance({
-      userID,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      instance({
+        userID,
+        page,
+        size,
+      }),
+    )
     return res?.data?.posts ?? []
   } catch (error) {
     console.log(error)
@@ -106,11 +130,13 @@ export const subscribeToStories = (userID, callback) => {
 export const listStories = async (userID, page = 0, size = 1000) => {
   const instance = FeedFunctions().listStories
   try {
-    const res = await instance({
-      userID,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      instance({
+        userID,
+        page,
+        size,
+      }),
+    )
 
     return res?.data?.stories ?? []
   } catch (error) {
@@ -198,11 +224,13 @@ export const subscribeToSinglePost = (postID, callback) => {
 export const listDiscoverFeedPosts = async (userID, page = 0, size = 1000) => {
   const instance = FeedFunctions().listDiscoverFeedPosts
   try {
-    const res = await instance({
-      userID,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      instance({
+        userID,
+        page,
+        size,
+      }),
+    )
 
     return res?.data?.posts ?? []
   } catch (error) {
@@ -235,12 +263,14 @@ export const listHashtagFeedPosts = async (
 ) => {
   const instance = FeedFunctions().listHashtagFeedPosts
   try {
-    const res = await instance({
-      userID,
-      hashtag,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      instance({
+        userID,
+        hashtag,
+        page,
+        size,
+      }),
+    )
 
     return res?.data?.posts ?? []
   } catch (error) {
@@ -293,11 +323,13 @@ export const listCanonicalPostsByAuthor = async (
 export const listProfileFeed = async (userID, page = 0, size = 1000) => {
   const instance = FeedFunctions().listProfileFeedPosts
   try {
-    const res = await instance({
-      userID,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      instance({
+        userID,
+        page,
+        size,
+      }),
+    )
 
     const posts = res?.data?.posts ?? []
 
@@ -315,15 +347,35 @@ export const listProfileFeed = async (userID, page = 0, size = 1000) => {
 export const fetchProfile = async (profileID, viewerID) => {
   const instance = FeedFunctions().fetchProfile
   try {
-    const res = await instance({
-      profileID,
-      viewerID,
-    })
+    const res = await withTimeout(
+      instance({
+        profileID,
+        viewerID,
+      }),
+    )
 
     return res?.data?.profileData
   } catch (error) {
     console.log(error)
-    return null
+
+    try {
+      const userDoc = await usersRef.doc(profileID).get()
+      const userData = userDoc?.data()
+
+      if (!userData) {
+        return null
+      }
+
+      return {
+        user: userData,
+        friends: [],
+        moreFriendsAvailable: false,
+        actionButtonType: profileID === viewerID ? 'settings' : 'add',
+      }
+    } catch (fallbackError) {
+      console.log('fetchProfile fallback error:', fallbackError)
+      return null
+    }
   }
 }
 

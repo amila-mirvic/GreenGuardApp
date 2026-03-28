@@ -1,5 +1,25 @@
 import { ChatFunctions, DocRef, channelsRef } from './chatRef'
 
+const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
+
+const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
+  let timeoutId
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
 export const subscribeChannels = (userID, callback) => {
   if (!userID) {
     callback && callback([])
@@ -42,11 +62,13 @@ export const subscribeToSingleChannel = (channelID, callback) => {
 
 export const listChannels = async (userID, page = 0, size = 1000) => {
   try {
-    const res = await ChatFunctions().listChannels({
-      userID,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      ChatFunctions().listChannels({
+        userID,
+        page,
+        size,
+      }),
+    )
     return res?.data?.channels ?? []
   } catch (error) {
     console.log('listChannels error:', error)
@@ -61,12 +83,14 @@ export const createChannel = async (
   isAdmin = false,
 ) => {
   try {
-    const res = await ChatFunctions().createChannel({
-      creator,
-      otherParticipants,
-      name,
-      isAdmin,
-    })
+    const res = await withTimeout(
+      ChatFunctions().createChannel({
+        creator,
+        otherParticipants,
+        name,
+        isAdmin,
+      }),
+    )
     return res?.data ?? null
   } catch (error) {
     console.log('createChannel error:', error)
@@ -81,12 +105,14 @@ export const markChannelMessageAsRead = async (
   readUserIDs,
 ) => {
   try {
-    const res = await ChatFunctions().markAsRead({
-      channelID,
-      userID,
-      messageID,
-      readUserIDs,
-    })
+    const res = await withTimeout(
+      ChatFunctions().markAsRead({
+        channelID,
+        userID,
+        messageID,
+        readUserIDs,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('markChannelMessageAsRead error:', error)
@@ -96,10 +122,12 @@ export const markChannelMessageAsRead = async (
 
 export const markUserAsTypingInChannel = async (channelID, userID) => {
   try {
-    const res = await ChatFunctions().markUserAsTypingInChannel({
-      channelID,
-      userID,
-    })
+    const res = await withTimeout(
+      ChatFunctions().markUserAsTypingInChannel({
+        channelID,
+        userID,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('markUserAsTypingInChannel error:', error)
@@ -110,11 +138,13 @@ export const markUserAsTypingInChannel = async (channelID, userID) => {
 export const sendMessage = async (channel, newMessage) => {
   try {
     const channelID = channel?.id || channel?.channelID
-    const res = await ChatFunctions().insertMessage({
-      channelID,
-      channel,
-      message: newMessage,
-    })
+    const res = await withTimeout(
+      ChatFunctions().insertMessage({
+        channelID,
+        channel,
+        message: newMessage,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('sendMessage error:', error)
@@ -125,10 +155,12 @@ export const sendMessage = async (channel, newMessage) => {
 export const deleteMessage = async (channel, messageID) => {
   try {
     const channelID = channel?.id || channel?.channelID
-    const res = await ChatFunctions().deleteMessage({
-      channelID,
-      messageID,
-    })
+    const res = await withTimeout(
+      ChatFunctions().deleteMessage({
+        channelID,
+        messageID,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('deleteMessage error:', error)
@@ -160,11 +192,13 @@ export const subscribeToMessages = (channelID, callback) => {
 
 export const listMessages = async (channelID, page = 0, size = 1000) => {
   try {
-    const res = await ChatFunctions().listMessages({
-      channelID,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      ChatFunctions().listMessages({
+        channelID,
+        page,
+        size,
+      }),
+    )
     return res?.data?.messages ?? []
   } catch (error) {
     console.log('listMessages error:', error)
@@ -174,11 +208,13 @@ export const listMessages = async (channelID, page = 0, size = 1000) => {
 
 export const leaveGroup = async (channelID, userID, content) => {
   try {
-    const res = await ChatFunctions().leaveGroup({
-      channelID,
-      userID,
-      content,
-    })
+    const res = await withTimeout(
+      ChatFunctions().leaveGroup({
+        channelID,
+        userID,
+        content,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('leaveGroup error:', error)
@@ -188,11 +224,13 @@ export const leaveGroup = async (channelID, userID, content) => {
 
 export const updateGroup = async (channelID, userID, channelData) => {
   try {
-    const res = await ChatFunctions().updateGroup({
-      channelID,
-      userID,
-      channelData,
-    })
+    const res = await withTimeout(
+      ChatFunctions().updateGroup({
+        channelID,
+        userID,
+        channelData,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('updateGroup error:', error)
@@ -202,9 +240,11 @@ export const updateGroup = async (channelID, userID, channelData) => {
 
 export const deleteGroup = async channelID => {
   try {
-    const res = await ChatFunctions().deleteGroup({
-      channelID,
-    })
+    const res = await withTimeout(
+      ChatFunctions().deleteGroup({
+        channelID,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('deleteGroup error:', error)
@@ -214,12 +254,14 @@ export const deleteGroup = async channelID => {
 
 export const addReaction = async (messageID, authorID, reaction, channelID) => {
   try {
-    const res = await ChatFunctions().addMessageReaction({
-      messageID,
-      authorID,
-      reaction,
-      channelID,
-    })
+    const res = await withTimeout(
+      ChatFunctions().addMessageReaction({
+        messageID,
+        authorID,
+        reaction,
+        channelID,
+      }),
+    )
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('addReaction error:', error)
