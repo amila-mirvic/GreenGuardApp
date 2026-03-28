@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import { useTheme, useTranslations } from '../../../../dopebase'
 import { FriendshipConstants } from '../../constants'
 import IMFriendsListComponent from '../../ui/IMFriendsListComponent/IMFriendsListComponent'
@@ -52,6 +53,14 @@ const IMFriendsScreen = props => {
     }
   }, [currentUser?.id])
 
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUser?.id) {
+        pullToRefresh(currentUser.id)
+      }
+    }, [currentUser?.id]),
+  )
+
   const onFriendshipsListEndReached = useCallback(() => {
     if ((friendships?.length || 0) >= batchSize) {
       loadMoreFriendships(currentUser?.id)
@@ -66,6 +75,7 @@ const IMFriendsScreen = props => {
 
   const onUnfriend = async item => {
     await unfriend(currentUser, item.user)
+    await pullToRefresh(currentUser?.id)
   }
 
   const onAddFriend = async item => {
@@ -77,6 +87,7 @@ const IMFriendsScreen = props => {
 
   const onCancel = async item => {
     await unfriend(currentUser, item.user)
+    await pullToRefresh(currentUser?.id)
   }
 
   const onAccept = async item => {

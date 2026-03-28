@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState } from 'react'
+import React, { memo, useCallback, useMemo, useState } from 'react'
 import { View, Text, TouchableOpacity, Image } from 'react-native'
 import { useTheme, TouchableIcon } from '../../core/dopebase'
 import { timeFormat } from '../../core/helpers/timeFormat'
@@ -9,7 +9,7 @@ const FeedItem = memo(props => {
     item,
     onUserItemPress,
     onReaction,
-    didPressComment,
+    onCommentPress,
     onMediaPress,
   } = props
 
@@ -20,19 +20,58 @@ const FeedItem = memo(props => {
 
   const reactionIcons = ['like', 'love', 'laugh', 'surprised', 'sad', 'angry']
 
+  const authorName = useMemo(() => {
+    if (!item?.author) return ''
+    return `${item.author.firstName || ''}${
+      item.author.lastName ? ` ${item.author.lastName}` : ''
+    }`.trim()
+  }, [item?.author])
+
+  const authorProfilePicture = useMemo(() => {
+    return (
+      item?.author?.profilePictureURL ||
+      item?.author?.profilePicture ||
+      item?.author?.photoURL ||
+      item?.author?.avatar ||
+      null
+    )
+  }, [item?.author])
+
+  const mediaURL = useMemo(() => {
+    if (!Array.isArray(item?.postMedia) || item.postMedia.length === 0) {
+      return null
+    }
+    const firstMedia = item.postMedia[0]
+    return firstMedia?.url || firstMedia?.uri || firstMedia || null
+  }, [item?.postMedia])
+
   const onHideReactions = useCallback(() => {
     setOtherReactionsVisible(false)
   }, [])
 
   const onMorePress = useCallback(() => {
-    // intentionally empty
+    // intentionally empty, samo da ne ruši build / UX
   }, [])
 
   const handleAuthorPress = useCallback(() => {
     if (onUserItemPress && item?.author) {
       onUserItemPress(item.author)
     }
-  }, [onUserItemPress, item])
+  }, [onUserItemPress, item?.author])
+
+  const handleLikePress = useCallback(() => {
+    onReaction?.('like', item)
+  }, [onReaction, item])
+
+  const handleCommentPress = useCallback(() => {
+    onCommentPress?.(item)
+  }, [onCommentPress, item])
+
+  const handleMediaPress = useCallback(() => {
+    if (mediaURL) {
+      onMediaPress?.(item.postMedia, 0)
+    }
+  }, [onMediaPress, item?.postMedia, mediaURL])
 
   const renderTouchableReactionIcon = (iconSource, reaction, index) => (
     <TouchableIcon
@@ -42,7 +81,7 @@ const FeedItem = memo(props => {
       containerStyle={styles.reactionIconContainer}
       onPress={() => {
         onHideReactions()
-        onReaction(reaction, item)
+        onReaction?.(reaction, item)
       }}
     />
   )
@@ -55,10 +94,11 @@ const FeedItem = memo(props => {
           iconSource={
             theme.icons[`${item.myReaction}Filled`] || theme.icons.likeFilled
           }
-          imageStyle={styles.inlineActionIconSelected}
+          imageStyle={styles.inlineActionIcon}
           renderTitle={true}
-          title={item?.reactionsCount < 1 ? ' ' : item?.reactionsCount}
-          onPress={() => onReaction(item.myReaction, item)}
+          title={item?.reactionsCount > 0 ? item.reactionsCount : ' '}
+          onPress={handleLikePress}
+          onLongPress={() => setOtherReactionsVisible(!otherReactionsVisible)}
         />
       )
     }
@@ -69,54 +109,12 @@ const FeedItem = memo(props => {
         iconSource={theme.icons.likeUnfilled}
         imageStyle={styles.inlineActionIconDefault}
         renderTitle={true}
-        title={item?.reactionsCount < 1 ? ' ' : item?.reactionsCount}
-        onPress={() => setOtherReactionsVisible(!otherReactionsVisible)}
+        title={item?.reactionsCount > 0 ? item.reactionsCount : ' '}
+        onPress={handleLikePress}
+        onLongPress={() => setOtherReactionsVisible(!otherReactionsVisible)}
       />
     )
   }
-
-  const renderPostText = currentItem => {
-    if (!currentItem?.postText) {
-      return null
-    }
-
-    return <Text style={styles.description}>{currentItem.postText}</Text>
-  }
-
-  const renderMedia = currentItem => {
-    if (!currentItem?.postMedia || currentItem.postMedia.length === 0) {
-      return null
-    }
-
-    const media = currentItem.postMedia
-    const firstMedia = media[0]
-    const mediaURL = firstMedia?.url || firstMedia
-
-    if (!mediaURL) {
-      return null
-    }
-
-    return (
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => onMediaPress?.(media, 0)}
-      >
-        <Image style={styles.postImage} source={{ uri: mediaURL }} />
-      </TouchableOpacity>
-    )
-  }
-
-  const authorName = item?.author
-    ? `${item.author.firstName || ''}${
-        item.author.lastName ? ' ' + item.author.lastName : ''
-      }`.trim()
-    : ''
-
-  const authorProfilePicture =
-    item?.author?.profilePictureURL ||
-    item?.author?.profilePicture ||
-    item?.author?.photoURL ||
-    item?.author?.avatar
 
   return (
     <TouchableOpacity
@@ -128,7 +126,17 @@ const FeedItem = memo(props => {
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={handleAuthorPress}
-          style={styles.userImageContainer}
+          style={[
+            styles.userImageContainer,
+            {
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              marginHorizontal: 10,
+              marginTop: 10,
+              backgroundColor: '#ddd',
+            },
+          ]}
         >
           <Image
             source={
@@ -136,13 +144,17 @@ const FeedItem = memo(props => {
                 ? { uri: authorProfilePicture }
                 : theme.icons.userAvatar
             }
-            style={styles.userImage}
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 26,
+            }}
           />
         </TouchableOpacity>
 
         <View style={styles.titleContainer}>
           {!!authorName && (
-            <View style={styles.verifiedContainer}>
+            <View style={[styles.verifiedContainer, { marginTop: 10 }]}>
               <Text style={styles.title}>{authorName}</Text>
               {item?.author?.isVerified && (
                 <Image
@@ -155,9 +167,7 @@ const FeedItem = memo(props => {
 
           <View style={styles.mainSubtitleContainer}>
             <View style={styles.subtitleContainer}>
-              <Text style={styles.subtitle}>
-                {timeFormat(item?.createdAt)}
-              </Text>
+              <Text style={styles.subtitle}>{timeFormat(item?.createdAt)}</Text>
             </View>
           </View>
         </View>
@@ -165,13 +175,28 @@ const FeedItem = memo(props => {
         <TouchableIcon
           onPress={onMorePress}
           imageStyle={styles.moreIcon}
-          containerStyle={styles.moreIconContainer}
+          containerStyle={[styles.moreIconContainer, { marginTop: 10, marginRight: 10 }]}
           iconSource={theme.icons.more}
         />
       </View>
 
-      {renderPostText(item)}
-      {renderMedia(item)}
+      {!!item?.postText && (
+        <Text style={styles.body}>{item.postText}</Text>
+      )}
+
+      {!!mediaURL && (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={handleMediaPress}
+          style={styles.bodyImageContainer}
+        >
+          <Image
+            style={styles.bodyImage}
+            source={{ uri: mediaURL }}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+      )}
 
       {otherReactionsVisible && (
         <View style={styles.reactionContainer}>
@@ -189,8 +214,8 @@ const FeedItem = memo(props => {
           iconSource={theme.icons.commentUnfilled}
           imageStyle={styles.inlineActionIconDefault}
           renderTitle={true}
-          title={item?.commentCount < 1 ? ' ' : item?.commentCount}
-          onPress={didPressComment}
+          title={item?.commentCount > 0 ? item.commentCount : ' '}
+          onPress={handleCommentPress}
         />
       </View>
     </TouchableOpacity>

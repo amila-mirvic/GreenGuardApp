@@ -8,14 +8,11 @@ const batchSize = 25
 
 const normalizeFriend = item => {
   if (!item) return null
-  if (item.user) {
-    return item.user
-  }
-  return item
+  return item?.user ? item.user : item
 }
 
 export const useSocialGraphFriends = userID => {
-  const [friends, setFriends] = useState(null)
+  const [friends, setFriends] = useState([])
   const pagination = useRef({ page: 0, size: batchSize, exhausted: false })
 
   const deduplicatedFriends = (oldFriends, newFriends) => {
@@ -24,7 +21,7 @@ export const useSocialGraphFriends = userID => {
       ? newFriends.map(normalizeFriend).filter(Boolean)
       : []
 
-    const all = [...oldList, ...newList]
+    const all = [...newList, ...oldList]
 
     return all.reduce((acc, curr) => {
       if (!curr?.id) {
@@ -37,20 +34,20 @@ export const useSocialGraphFriends = userID => {
     }, [])
   }
 
-  const subscribeToFriends = userID => {
-    return subscribeToFriendsAPI(userID, newFriends => {
+  const subscribeToFriends = currentUserID => {
+    return subscribeToFriendsAPI(currentUserID, newFriends => {
       setFriends(oldFriends => deduplicatedFriends(oldFriends, newFriends))
     })
   }
 
-  const loadMoreFriends = async userID => {
-    if (!userID || pagination.current.exhausted) {
+  const loadMoreFriends = async currentUserID => {
+    if (!currentUserID || pagination.current.exhausted) {
       return
     }
 
     try {
       const newFriends = await fetchFriendsAPI(
-        userID,
+        currentUserID,
         pagination.current.page,
         pagination.current.size,
       )
@@ -70,29 +67,56 @@ export const useSocialGraphFriends = userID => {
     }
   }
 
+  const refreshFriends = async currentUserID => {
+    if (!currentUserID) {
+      setFriends([])
+      return
+    }
+
+    try {
+      pagination.current = { page: 0, size: batchSize, exhausted: false }
+      const initialFriends = await fetchFriendsAPI(currentUserID, 0, batchSize)
+      const safeFriends = Array.isArray(initialFriends) ? initialFriends : []
+
+      if (safeFriends.length < batchSize) {
+        pagination.current.exhausted = true
+      } else {
+        pagination.current.page = 1
+      }
+
+      setFriends(oldFriends => deduplicatedFriends(oldFriends, safeFriends))
+    } catch (error) {
+      console.log('refreshFriends error:', error)
+      setFriends(prev => (Array.isArray(prev) ? prev : []))
+    }
+  }
+
   useEffect(() => {
     if (!userID) {
+      setFriends([])
       return
     }
 
     let mounted = true
-
     const unsubscribe = subscribeToFriends(userID)
 
     fetchFriendsAPI(userID, 0, batchSize)
       .then(initialFriends => {
         if (!mounted) return
+
         const safeFriends = Array.isArray(initialFriends) ? initialFriends : []
+
         if (safeFriends.length < batchSize) {
           pagination.current.exhausted = true
         } else {
           pagination.current.page = 1
         }
+
         setFriends(oldFriends => deduplicatedFriends(oldFriends, safeFriends))
       })
       .catch(error => {
         console.log('initial fetchFriends error:', error)
-        if (mounted && friends == null) {
+        if (mounted) {
           setFriends([])
         }
       })
@@ -108,5 +132,6 @@ export const useSocialGraphFriends = userID => {
     friends,
     subscribeToFriends,
     loadMoreFriends,
+    refreshFriends,
   }
 }

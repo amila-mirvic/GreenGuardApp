@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 import { useCurrentUser } from '../../onboarding'
-import { useChatChannels } from '../api'
+import { useChatChannels, useChatChannelsAndFriends } from '../api'
 import IMConversationList from '../IMConversationList'
 import { useTheme } from '../../dopebase'
 
@@ -18,6 +18,8 @@ const IMConversationListView = memo(props => {
     loadMoreChannels,
     pullToRefresh,
   } = useChatChannels()
+
+  const { hydratedListWithChannelsAndFriends } = useChatChannelsAndFriends()
 
   useEffect(() => {
     if (!currentUser?.id) {
@@ -59,11 +61,17 @@ const IMConversationListView = memo(props => {
     )
   }
 
+  const safeConversationList =
+    Array.isArray(hydratedListWithChannelsAndFriends) &&
+    hydratedListWithChannelsAndFriends.length > 0
+      ? hydratedListWithChannelsAndFriends
+      : channels || []
+
   return (
     <IMConversationList
       user={currentUser}
-      conversations={channels || []}
-      loading={channels === null}
+      conversations={safeConversationList}
+      loading={channels === null && safeConversationList.length === 0}
       loadingBottom={loadingBottom}
       onConversationPress={onChatItemPress}
       headerComponent={headerComponent}
