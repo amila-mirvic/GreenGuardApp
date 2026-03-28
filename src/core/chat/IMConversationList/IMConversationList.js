@@ -63,7 +63,7 @@ const IMConversationList = memo(props => {
         </View>
       }
       ListFooterComponent={
-        loadingBottom ? (
+        loadingBottom && safeConversations.length > 0 ? (
           <View style={styles.loadingFooter}>
             <ActivityIndicator size="small" />
           </View>
@@ -71,7 +71,9 @@ const IMConversationList = memo(props => {
       }
       refreshing={refreshing}
       onRefresh={onRefresh}
-      onEndReached={onListEndReached}
+      onEndReached={
+        safeConversations.length > 0 ? onListEndReached : undefined
+      }
       onEndReachedThreshold={0.3}
     />
   )

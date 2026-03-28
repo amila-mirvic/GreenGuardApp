@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useState, useRef, useEffect } from 'react'
-import { ActivityIndicator, FlatList, View } from 'react-native'
+import { FlatList, View } from 'react-native'
 import { useTheme, useTranslations } from '../../../../dopebase'
 import { useCurrentUser } from '../../../../onboarding'
 import { useSearchUsers, useSocialGraphMutations } from '../../api'
@@ -22,7 +22,6 @@ function IMUserSearchModal(props) {
   const styles = dynamicStyles(theme, appearance)
 
   const followEnabled = route.params.followEnabled
-
   const [keyword, setKeyword] = useState('')
 
   useLayoutEffect(() => {
@@ -36,7 +35,6 @@ function IMUserSearchModal(props) {
   }, [])
 
   useEffect(() => {
-    console.log(`changed keyword ${keyword}`)
     search(keyword)
   }, [keyword])
 
@@ -51,10 +49,6 @@ function IMUserSearchModal(props) {
     />
   )
 
-  const onSearchClear = () => {
-    setKeyword('')
-  }
-
   const onSearchBarCancel = async () => {
     if (searchBarRef.current) {
       searchBarRef.current.blur()
@@ -63,7 +57,7 @@ function IMUserSearchModal(props) {
   }
 
   const onSearchTextChange = text => {
-    setKeyword(text.trim())
+    setKeyword(text)
   }
 
   const onAddFriend = (user, index) => {
@@ -86,17 +80,11 @@ function IMUserSearchModal(props) {
         />
       </View>
 
-      {users === null && (
-        <ActivityIndicator
-          style={{ marginTop: 15 }}
-          size="small"
-          color="#cccccc"
-        />
-      )}
       <FlatList
         keyboardShouldPersistTaps="always"
         data={users}
         renderItem={renderItem}
+        keyExtractor={(item, index) => `${item?.id || index}`}
       />
     </View>
   )

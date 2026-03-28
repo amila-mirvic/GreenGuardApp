@@ -80,11 +80,10 @@ export const listHomeFeedPosts = async (userID, page = 0, size = 1000) => {
       page,
       size,
     })
-
-    return res?.data?.posts
+    return res?.data?.posts ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
@@ -113,10 +112,10 @@ export const listStories = async (userID, page = 0, size = 1000) => {
       size,
     })
 
-    return res?.data?.stories
+    return res?.data?.stories ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
@@ -175,10 +174,10 @@ export const listComments = async (postID, page = 0, size = 1000) => {
       size,
     })
 
-    return res?.data?.comments
+    return res?.data?.comments ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
@@ -205,10 +204,10 @@ export const listDiscoverFeedPosts = async (userID, page = 0, size = 1000) => {
       size,
     })
 
-    return res?.data?.posts
+    return res?.data?.posts ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
@@ -243,10 +242,10 @@ export const listHashtagFeedPosts = async (
       size,
     })
 
-    return res?.data?.posts
+    return res?.data?.posts ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
@@ -266,6 +265,26 @@ export const subscribeToProfileFeedPosts = (userID, callback) => {
     )
 }
 
+// ✅ fallback helper
+export const listCanonicalPostsByAuthor = async (
+  userID,
+  page = 0,
+  size = 25,
+) => {
+  try {
+    const snapshot = await postsRef
+      .where('authorID', '==', userID)
+      .orderBy('createdAt', 'desc')
+      .limit(size)
+      .get()
+
+    return snapshot?.docs?.map(doc => doc.data()) ?? []
+  } catch (error) {
+    console.log('listCanonicalPostsByAuthor error:', error)
+    return []
+  }
+}
+
 export const listProfileFeed = async (userID, page = 0, size = 1000) => {
   const instance = FeedFunctions().listProfileFeedPosts
   try {
@@ -275,10 +294,17 @@ export const listProfileFeed = async (userID, page = 0, size = 1000) => {
       size,
     })
 
-    return res?.data?.posts
+    const posts = res?.data?.posts ?? []
+
+    // ✅ fallback ako profile feed vrati prazno
+    if (posts.length === 0) {
+      return await listCanonicalPostsByAuthor(userID, page, size)
+    }
+
+    return posts
   } catch (error) {
     console.log(error)
-    return null
+    return await listCanonicalPostsByAuthor(userID, page, size)
   }
 }
 

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react'
-import { Platform, Share } from 'react-native'
-import { useTheme, useTranslations, TouchableIcon } from '../../core/dopebase'
+import React, { useState, useLayoutEffect, useCallback } from 'react'
+import { Share } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
+import { useTheme, useTranslations } from '../../core/dopebase'
 import { Feed } from '../../components'
 import { useDiscoverPosts } from '../../core/socialgraph/feed'
 import { useUserReportingMutations } from '../../core/user-reporting'
@@ -41,14 +42,16 @@ const DiscoverScreen = props => {
     })
   }, [])
 
-  useEffect(() => {
-    if (currentUser?.id) {
-      pullToRefresh(currentUser?.id)
-    }
-  }, [currentUser?.id])
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUser?.id) {
+        pullToRefresh(currentUser.id)
+      }
+    }, [currentUser?.id]),
+  )
 
   const onCommentPress = item => {
-    let copyItem = { ...item }
+    const copyItem = { ...item }
     navigation.navigate('DiscoverSinglePostNavigator', {
       item: { ...copyItem },
       lastScreenTitle: 'Discover',
@@ -112,7 +115,7 @@ const DiscoverScreen = props => {
     }
   }, [])
 
-  const onDeletePost = useCallback(async item => {}, [])
+  const onDeletePost = useCallback(async () => {}, [])
 
   const onUserReport = useCallback(
     async (item, type) => {
@@ -138,7 +141,7 @@ const DiscoverScreen = props => {
   }
 
   const pullToRefreshConfig = {
-    refreshing: refreshing,
+    refreshing,
     onRefresh: () => {
       pullToRefresh(currentUser?.id)
     },

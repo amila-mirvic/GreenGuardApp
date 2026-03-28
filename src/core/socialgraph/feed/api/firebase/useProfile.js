@@ -12,7 +12,7 @@ const batchSize = 25
 
 export const useProfile = (profileID, viewerID) => {
   const [profile, setProfile] = useState(null)
-  const [posts, setPosts] = useState(null)
+  const [posts, setPosts] = useState([])
   const [isLoadingBottom, setIsLoadingBottom] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -111,9 +111,7 @@ export const useProfile = (profileID, viewerID) => {
       )
     } catch (error) {
       console.error('Error loading profile posts:', error)
-      if (posts == null) {
-        setPosts(hydratePostsWithMyReactions(realtimePostsRef.current || [], userID))
-      }
+      setPosts(hydratePostsWithMyReactions(realtimePostsRef.current || [], userID))
     } finally {
       setIsLoadingBottom(false)
     }
@@ -139,14 +137,13 @@ export const useProfile = (profileID, viewerID) => {
       const safePosts = removeLocallyDeletedPosts(newPosts || [])
       const merged = deduplicatedPosts(realtimePostsRef.current, safePosts, true)
 
-      if (!merged.length) {
-        setPosts([])
-        pagination.current.exhausted = true
-        return
-      }
-
-      pagination.current.page += 1
       setPosts(hydratePostsWithMyReactions(merged, userID))
+
+      if (!safePosts.length) {
+        pagination.current.exhausted = true
+      } else {
+        pagination.current.page += 1
+      }
     } catch (error) {
       console.error('Error refreshing profile feed:', error)
       setPosts(hydratePostsWithMyReactions(realtimePostsRef.current || [], userID))

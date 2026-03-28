@@ -2,18 +2,25 @@ import { useRef, useState } from 'react'
 import { searchUsers as searchUsersAPI } from '../firebaseSocialGraphClient'
 
 export const useSearchUsers = userID => {
-  const [users, setUsers] = useState(null)
+  const [users, setUsers] = useState([])
   const pagination = useRef({ page: 0, size: 100 })
 
   const search = async keyword => {
-    const users = await searchUsersAPI(
+    const trimmedKeyword = (keyword || '').trim()
+
+    if (!trimmedKeyword.length) {
+      setUsers([])
+      return
+    }
+
+    const fetchedUsers = await searchUsersAPI(
       userID,
-      keyword,
+      trimmedKeyword,
       pagination.current.page,
       pagination.current.size,
     )
 
-    setUsers(users)
+    setUsers(Array.isArray(fetchedUsers) ? fetchedUsers : [])
   }
 
   const removeUserAt = index => {
