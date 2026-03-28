@@ -1,6 +1,6 @@
 import { functions } from '../../firebase/config'
 
-const DEFAULT_CALLABLE_TIMEOUT_MS = 15000
+const DEFAULT_CALLABLE_TIMEOUT_MS = 30000
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
   let timeoutId
@@ -20,6 +20,19 @@ const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => 
   }
 }
 
+const normalizeCreatedAt = value => {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return Number.isNaN(n) ? 0 : n
+  }
+  if (value?.seconds) return value.seconds
+  if (typeof value?.toDate === 'function') {
+    return Math.floor(value.toDate().getTime() / 1000)
+  }
+  return 0
+}
+
 export const subscribeNotifications = (userId, callback) => {
   if (!userId) {
     callback && callback([])
@@ -36,7 +49,12 @@ export const subscribeNotifications = (userId, callback) => {
         }),
       )
 
-      const notifications = res?.data?.notifications ?? []
+      const notifications = Array.isArray(res?.data?.notifications)
+        ? [...res.data.notifications].sort(
+            (a, b) =>
+              normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
+          )
+        : []
 
       if (!cancelled) {
         callback && callback(notifications)

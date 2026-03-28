@@ -4,51 +4,73 @@ const functions = require('firebase-functions')
 
 const notificationsRef = db.collection('notifications')
 
-exports.listNotifications = functions.https.onCall(async (data, context) => {
-  try {
-    const { userID } = data || {}
-
-    if (!userID) {
-      return { notifications: [], success: true }
-    }
-
-    const snapshot = await notificationsRef
-      .where('toUserID', '==', userID)
-      .orderBy('createdAt', 'desc')
-      .limit(100)
-      .get()
-
-    const notifications =
-      snapshot?.docs?.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      })) ?? []
-
-    return { notifications, success: true }
-  } catch (error) {
-    console.log('listNotifications error:', error)
-    return { notifications: [], success: false }
+const normalizeCreatedAt = value => {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return Number.isNaN(n) ? 0 : n
   }
-})
+  if (value && typeof value.seconds === 'number') return value.seconds
+  return 0
+}
 
-exports.updateNotification = functions.https.onCall(async (data, context) => {
-  try {
-    const { notificationID } = data || {}
+exports.listNotifications = functions
+  .runWith({
+    minInstances: 1,
+  })
+  .https.onCall(async data => {
+    try {
+      const { userID } = data || {}
 
-    if (!notificationID) {
-      return { success: false }
+      if (!userID) {
+        return { notifications: [], success: true }
+      }
+
+      // Bez orderBy u Firestore query-ju da izbjegnemo index / query fail,
+      // sortiramo ručno nakon fetch-a.
+      const snapshot = await notificationsRef.where('toUserID', '==', userID).get()
+
+      const notifications =
+        snapshot?.docs
+          ?.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          }))
+          ?.sort(
+            (a, b) =>
+              normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
+          )
+          ?.slice(0, 100) ?? []
+
+      return { notifications, success: true }
+    } catch (error) {
+      console.log('listNotifications error:', error)
+      return { notifications: [], success: false, error: error?.message || String(error) }
     }
+  })
 
-    await notificationsRef.doc(notificationID).set(
-      {
-        seen: true,
-      },
-      { merge: true },
-    )
+exports.updateNotification = functions
+  .runWith({
+    minInstances: 1,
+  })
+  .https.onCall(async data => {
+    try {
+      const { notificationID } = data || {}
 
-    return { success: true }
-  } catch (error) {
-    console.log('updateNotification error:', error)
-    return { success: false }
-  }
-})
+      if (!notificationID) {
+        return { success: false }
+      }
+
+      await notificationsRef.doc(notificationID).set(
+        {
+          seen: true,
+        },
+        { merge: true },
+      )
+
+      return { success: true }
+    } catch (error) {
+      console.log('updateNotification error:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })

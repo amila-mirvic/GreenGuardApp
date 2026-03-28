@@ -524,48 +524,55 @@ const IMChatScreen = memo(props => {
     return null
   }
 
-  const onSendInput = async () => {
-    if (!inputValue && !downloadObject) {
-      console.log('No message to be sent')
-      return
-    }
-
-    let tempInputValue = inputValue
-    if (!tempInputValue) {
-      tempInputValue = formatMessage(downloadObject, localized)
-    }
-
-    const newMessage = optimisticSetMessage(
-      currentUser,
-      tempInputValue,
-      downloadObject,
-      inReplyToItem,
-    )
-
-    richTextInputRef.current?.clear()
-    setInputValue('')
-    setInReplyToItem(null)
-
-    const currentChannelID = channel?.channelID || channel?.id
-    const hasExistingChannel = Boolean(
-      currentChannelID &&
-        (channel?.lastMessageDate ||
-          channel?.creatorID ||
-          channel?.participants?.length > 1),
-    )
-
-    if (hasExistingChannel) {
-      await sendMessage(newMessage, tempInputValue, channel)
-      return
-    }
-
-    const newChannel = await createOne2OneChannel()
-    if (newChannel) {
-      await sendMessage(newMessage, tempInputValue, newChannel)
-    }
-
-    setLoading(false)
+const onSendInput = async () => {
+  if (!inputValue && !downloadObject) {
+    console.log('No message to be sent')
+    return
   }
+
+  let tempInputValue = inputValue
+  if (!tempInputValue) {
+    tempInputValue = formatMessage(downloadObject, localized)
+  }
+
+  const newMessage = optimisticSetMessage(
+    currentUser,
+    tempInputValue,
+    downloadObject,
+    inReplyToItem,
+  )
+
+  richTextInputRef.current?.clear()
+  setInputValue('')
+  setInReplyToItem(null)
+
+  let currentChannelID = channel?.channelID || channel?.id
+
+  // 🔥 AKO CHANNEL NE POSTOJI → napravi ga
+  if (!currentChannelID) {
+    const newChannel = await createOne2OneChannel()
+    if (!newChannel) return
+
+    currentChannelID = newChannel?.channelID || newChannel?.id
+  }
+
+  // 🔥 OVO JE KLJUČNO — direktno snimanje u Firestore
+  try {
+    await firebase.firestore()
+      .collection('channels')
+      .doc(currentChannelID)
+      .collection('messages_live')
+      .add({
+        text: tempInputValue,
+        userID: currentUser.id,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      })
+  } catch (error) {
+    console.log('SEND ERROR:', error)
+  }
+
+  setLoading(false)
+}
 
   const sendMessage = async (
     newMessage,
