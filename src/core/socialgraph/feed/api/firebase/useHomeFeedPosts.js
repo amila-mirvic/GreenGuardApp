@@ -24,10 +24,30 @@ export const useHomeFeedPosts = () => {
 
   useEffect(() => {
     if (posts?.length && locallyDeletedPosts?.length) {
-      const filterDeletedPosts = removeLocallyDeletedPosts(posts)
-      setPosts(filterDeletedPosts)
+      const filteredDeletedPosts = removeLocallyDeletedPosts(posts)
+      setPosts(filteredDeletedPosts)
     }
   }, [JSON.stringify(locallyDeletedPosts)])
+
+  const removeLocallyDeletedPosts = (postList = []) => {
+    return postList.filter(post => post && !locallyDeletedPosts.includes(post.id))
+  }
+
+  const deduplicatedPosts = (oldPosts, newPosts, appendToBottom) => {
+    const oldList = Array.isArray(oldPosts) ? oldPosts.filter(Boolean) : []
+    const newList = Array.isArray(newPosts) ? newPosts.filter(Boolean) : []
+
+    const all = appendToBottom
+      ? [...oldList, ...newList]
+      : [...newList, ...oldList]
+
+    return all.reduce((acc, curr) => {
+      if (curr?.id && !acc.some(post => post?.id === curr.id)) {
+        acc.push(curr)
+      }
+      return acc
+    }, [])
+  }
 
   const loadMorePosts = async userID => {
     if (!userID || pagination.current.exhausted || isLoadingBottom) {
@@ -36,25 +56,31 @@ export const useHomeFeedPosts = () => {
 
     try {
       setIsLoadingBottom(true)
+
       const newPosts = await listHomeFeedPostsAPI(
         userID,
         pagination.current.page,
         pagination.current.size,
       )
 
-      if (newPosts?.length === 0) {
+      if (!newPosts?.length) {
+        if (pagination.current.page === 0) {
+          setPosts([])
+        }
         pagination.current.exhausted = true
-      } else {
-        pagination.current.page += 1
-        setPosts(oldPosts =>
-          hydratePostsWithMyReactions(
-            deduplicatedPosts(oldPosts, newPosts, true),
-            userID,
-          ),
-        )
+        return
       }
+
+      pagination.current.page += 1
+
+      setPosts(oldPosts =>
+        hydratePostsWithMyReactions(
+          deduplicatedPosts(oldPosts, removeLocallyDeletedPosts(newPosts), true),
+          userID,
+        ),
+      )
     } catch (error) {
-      console.error('Error loading more posts:', error)
+      console.error('Error loading home feed posts:', error)
     } finally {
       setIsLoadingBottom(false)
     }
@@ -62,17 +88,16 @@ export const useHomeFeedPosts = () => {
 
   const subscribeToHomeFeedPosts = userID => {
     return subscribeToHomeFeedPostsAPI(userID, newPosts => {
-      setPosts(oldPosts => {
-        const posts = hydratePostsWithMyReactions(
+      setPosts(oldPosts =>
+        hydratePostsWithMyReactions(
           deduplicatedPosts(
             oldPosts,
             removeLocallyDeletedPosts(newPosts),
             false,
           ),
           userID,
-        )
-        return posts
-      })
+        ),
+      )
     })
   }
 
@@ -81,8 +106,7 @@ export const useHomeFeedPosts = () => {
 
     try {
       setRefreshing(true)
-      pagination.current.page = 0
-      pagination.current.exhausted = false
+      pagination.current = { page: 0, size: batchSize, exhausted: false }
 
       const newPosts = await listHomeFeedPostsAPI(
         userID,
@@ -90,20 +114,22 @@ export const useHomeFeedPosts = () => {
         pagination.current.size,
       )
 
-      if (newPosts?.length === 0) {
+      if (!newPosts?.length) {
         pagination.current.exhausted = true
         setPosts([])
-      } else {
-        pagination.current.page += 1
-        setPosts(oldPosts =>
-          hydratePostsWithMyReactions(
-            deduplicatedPosts([], newPosts, true), // Remove oldPosts to get fresh content
-            userID,
-          ),
-        )
+        return
       }
+
+      pagination.current.page += 1
+
+      setPosts(
+        hydratePostsWithMyReactions(
+          deduplicatedPosts([], removeLocallyDeletedPosts(newPosts), true),
+          userID,
+        ),
+      )
     } catch (error) {
-      console.error('Error pulling to refresh:', error)
+      console.error('Error refreshing home feed:', error)
     } finally {
       setRefreshing(false)
     }
@@ -115,50 +141,32 @@ export const useHomeFeedPosts = () => {
 
   const ingestAdSlots = adsPlacementDistance => {
     setPosts(oldPosts =>
-      postsWithInsertedAdSlots(oldPosts, adsPlacementDistance),
+      postsWithInsertedAdSlots([...(oldPosts || [])], adsPlacementDistance),
     )
   }
 
-  const postsWithInsertedAdSlots = (posts, adsDistance) => {
-    if (!posts) {
-      return posts
+  const postsWithInsertedAdSlots = (incomingPosts, adsDistance) => {
+    if (!incomingPosts?.length || !adsDistance) {
+      return incomingPosts
     }
-    // We insert ad slots every X posts
-    var adSlotPositions = []
-    for (var i = adsDistance; i < posts.length; i += adsDistance) {
+
+    const postsCopy = [...incomingPosts]
+    const adSlotPositions = []
+    for (let i = adsDistance; i < postsCopy.length; i += adsDistance + 1) {
       adSlotPositions.push(i)
     }
-    for (var j = adSlotPositions.length - 1; j >= 0; --j) {
-      posts.splice(adSlotPositions[j], 0, { isAd: true })
+    for (let j = adSlotPositions.length - 1; j >= 0; --j) {
+      postsCopy.splice(adSlotPositions[j], 0, {
+        id: `ad-slot-${j}-${Date.now()}`,
+        isAd: true,
+      })
     }
-    return posts
-  }
-
-  const deduplicatedPosts = (oldPosts, newPosts, appendToBottom) => {
-    const oldList = oldPosts ?? []
-    const newList = newPosts ?? []
-
-    const all = oldPosts
-      ? appendToBottom
-        ? [...oldList, ...newList]
-        : [...newList, ...oldList]
-      : newPosts
-
-    return all.reduce((acc, curr) => {
-      if (!acc.some(post => post.id === curr.id)) {
-        acc.push(curr)
-      }
-      return acc
-    }, [])
-  }
-
-  const removeLocallyDeletedPosts = (postList = []) => {
-    return postList.filter(post => !locallyDeletedPosts.includes(post.id))
+    return postsCopy
   }
 
   return {
     batchSize,
-    posts: posts,
+    posts,
     refreshing,
     isLoadingBottom,
     subscribeToHomeFeedPosts,

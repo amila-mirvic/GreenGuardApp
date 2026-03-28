@@ -103,8 +103,8 @@ const FeedScreen = props => {
     const postsUnsubscribe = subscribeToHomeFeedPosts(currentUser?.id)
     const storiesUnsubscribe = subscribeToStories(currentUser?.id)
 
-    loadMorePosts(currentUser?.id)
-    loadMoreStories(currentUser?.id)
+pullToRefresh(currentUser?.id)
+loadMoreStories(currentUser?.id)
 
     return () => {
       postsUnsubscribe && postsUnsubscribe()

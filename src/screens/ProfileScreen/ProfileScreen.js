@@ -75,19 +75,19 @@ const ProfileScreen = props => {
     }
   }, [lastScreenTitle])
 
-  useEffect(() => {
-    const profileUserID = otherUser?.id ?? currentUser?.id
-    if (!profileUserID) {
-      return
-    }
+useEffect(() => {
+  const profileUserID = otherUser?.id ?? currentUser?.id
+  if (!profileUserID) {
+    return
+  }
 
-    const postsUnsubscribe = subscribeToProfileFeedPosts(profileUserID)
-    loadMorePosts(profileUserID)
+  const postsUnsubscribe = subscribeToProfileFeedPosts(profileUserID)
+  pullToRefresh(profileUserID)
 
-    return () => {
-      postsUnsubscribe && postsUnsubscribe()
-    }
-  }, [currentUser?.id, otherUser?.id])
+  return () => {
+    postsUnsubscribe && postsUnsubscribe()
+  }
+}, [currentUser?.id, otherUser?.id])
 
   const navigateToNotifications = useCallback(() => {
     navigation.navigate(lastScreenTitle + 'Notification', {

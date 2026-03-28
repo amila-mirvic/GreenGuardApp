@@ -2,7 +2,7 @@ import React, { memo, useCallback, useEffect } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 import { useCurrentUser } from '../../onboarding'
 import { useChatChannels } from '../api'
-import { IMConversationList } from '../IMConversationList'
+import IMConversationList from '../IMConversationList'
 import { useTheme } from '../../dopebase'
 
 const IMConversationListView = memo(props => {
@@ -26,13 +26,13 @@ const IMConversationListView = memo(props => {
 
     const unsubscribe = subscribeToChannels(currentUser.id)
 
-    // bitno: inicijalni fetch
+    // inicijalni fetch da lista ne bude prazna na prvom ulasku
     pullToRefresh(currentUser.id)
 
     return () => {
       unsubscribe && unsubscribe()
     }
-  }, [currentUser?.id])
+  }, [currentUser?.id, subscribeToChannels, pullToRefresh])
 
   const onChatItemPress = useCallback(
     item => {
@@ -46,12 +46,12 @@ const IMConversationListView = memo(props => {
   const onRefresh = useCallback(() => {
     if (!currentUser?.id) return
     pullToRefresh(currentUser.id)
-  }, [currentUser?.id])
+  }, [currentUser?.id, pullToRefresh])
 
   const onListEndReached = useCallback(() => {
     if (!currentUser?.id) return
     loadMoreChannels(currentUser.id)
-  }, [currentUser?.id])
+  }, [currentUser?.id, loadMoreChannels])
 
   if (!currentUser) {
     return (
