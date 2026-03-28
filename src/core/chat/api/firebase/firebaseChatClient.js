@@ -368,29 +368,44 @@ export const markUserAsTypingInChannel = async (channelID, userID) => {
   }
 }
 
+
 export const sendMessage = async (channel, newMessage) => {
   try {
     const channelID = channel?.id || channel?.channelID
-    if (!channelID || !newMessage?.id) {
-      return { success: false, error: 'Invalid channel or message.' }
+
+    if (!channelID) {
+      throw new Error('Missing channelID')
     }
 
+    // 🔥 KRITIČNO: garantujemo da message ima ID i createdAt
+    const safeMessage = {
+      ...newMessage,
+      id: newMessage?.id || `${Date.now()}_${Math.random()}`,
+      createdAt:
+        typeof newMessage?.createdAt === 'number'
+          ? newMessage.createdAt
+          : Math.floor(Date.now() / 1000),
+    }
+
+    // 👉 prvo pokušavamo callable (backend)
     try {
       const res = await withTimeout(
         ChatFunctions().insertMessage({
           channelID,
           channel,
-          message: newMessage,
+          message: safeMessage,
         }),
       )
 
-      const messageDoc = await findMessageByID(channelID, newMessage.id)
+      // provjera da li je stvarno upisano
+      const messageDoc = await findMessageByID(channelID, safeMessage.id)
       if (messageDoc) {
         return res?.data ?? { success: true }
       }
 
+      // retry nakon delay
       await wait(1200)
-      const delayedMessageDoc = await findMessageByID(channelID, newMessage.id)
+      const delayedMessageDoc = await findMessageByID(channelID, safeMessage.id)
       if (delayedMessageDoc) {
         return res?.data ?? { success: true }
       }
@@ -398,38 +413,33 @@ export const sendMessage = async (channel, newMessage) => {
       console.log('sendMessage callable error:', callableError)
     }
 
-    const fallbackMessage = {
-      ...newMessage,
-      id: newMessage?.id,
-      createdAt:
-        typeof newMessage?.createdAt === 'number'
-          ? newMessage.createdAt
-          : Math.floor(Date.now() / 1000),
-    }
-
+    // 🔥 FALLBACK: direktno upisujemo u Firestore
     await channelsRef
       .doc(channelID)
       .collection('messages_live')
-      .doc(fallbackMessage.id)
-      .set(fallbackMessage, { merge: true })
+      .doc(safeMessage.id)
+      .set(safeMessage, { merge: true })
 
+    // update channel metadata
     await channelsRef.doc(channelID).set(
       {
         id: channelID,
         channelID,
-        participants: Array.isArray(channel?.participants) ? channel.participants : [],
+        participants: Array.isArray(channel?.participants)
+          ? channel.participants
+          : [],
         name: channel?.name || channel?.title || '',
         admins: Array.isArray(channel?.admins) ? channel.admins : null,
         lastMessage:
-          fallbackMessage?.content?.length > 0
-            ? fallbackMessage.content
-            : fallbackMessage?.media?.url || fallbackMessage?.media || '',
-        lastMessageDate: fallbackMessage.createdAt,
-        createdAt: channel?.createdAt || fallbackMessage.createdAt,
-        creatorID: channel?.creatorID || fallbackMessage.senderID,
-        lastMessageSenderId: fallbackMessage.senderID,
-        lastThreadMessageId: fallbackMessage.id,
-        readUserIDs: [fallbackMessage.senderID],
+          safeMessage?.content?.length > 0
+            ? safeMessage.content
+            : safeMessage?.media?.url || safeMessage?.media || '',
+        lastMessageDate: safeMessage.createdAt,
+        createdAt: channel?.createdAt || safeMessage.createdAt,
+        creatorID: channel?.creatorID || safeMessage.senderID,
+        lastMessageSenderId: safeMessage.senderID,
+        lastThreadMessageId: safeMessage.id,
+        readUserIDs: [safeMessage.senderID],
         typingUsers: {},
       },
       { merge: true },
@@ -441,6 +451,8 @@ export const sendMessage = async (channel, newMessage) => {
     return { success: false, error: error?.message || error }
   }
 }
+
+
 
 export const deleteMessage = async (channel, messageID) => {
   try {

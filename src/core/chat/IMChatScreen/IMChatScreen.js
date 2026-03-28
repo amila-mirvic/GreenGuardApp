@@ -462,50 +462,57 @@ const IMChatScreen = memo(props => {
     return null
   }
 
-  const onSendInput = async () => {
-    if (!inputValue && !downloadObject) {
-      return
-    }
+const onSendInput = async () => {
+  if (!inputValue && !downloadObject) {
+    return
+  }
 
-    let tempInputValue = inputValue
+  let tempInputValue = inputValue
 
-    if (!tempInputValue) {
-      tempInputValue = formatMessage(downloadObject, localized)
-    }
+  if (!tempInputValue) {
+    tempInputValue = formatMessage(downloadObject, localized)
+  }
 
-    const newMessage = optimisticSetMessage(
-      currentUser,
-      { content: tempInputValue },
-      downloadObject,
-      inReplyToItem,
-    )
+  // 🔥 FIX: garantujemo ID i createdAt
+  const safeMessage = {
+    id: `${currentUser.id}_${Date.now()}`, // UNIQUE ID
+    content: tempInputValue,
+    createdAt: Math.floor(Date.now() / 1000),
+    senderID: currentUser.id,
+  }
 
-    richTextInputRef.current?.clear()
-    setInputValue('')
-    setInReplyToItem(null)
+  const newMessage = optimisticSetMessage(
+    currentUser,
+    safeMessage,
+    downloadObject,
+    inReplyToItem,
+  )
 
-    let targetChannel = channel
-    const currentChannelID = channel?.channelID || channel?.id
+  richTextInputRef.current?.clear()
+  setInputValue('')
+  setInReplyToItem(null)
 
-    if (!currentChannelID) {
-      targetChannel = await createOne2OneChannel()
-      if (!targetChannel) {
-        setInputValue(tempInputValue)
-        setInReplyToItem(newMessage.inReplyToItem)
-        return
-      }
-    }
+  let targetChannel = channel
+  const currentChannelID = channel?.channelID || channel?.id
 
+  if (!currentChannelID) {
+    targetChannel = await createOne2OneChannel()
+    if (!targetChannel) return
+  }
+
+  try {
     const response = await sendMessageAPI(newMessage, targetChannel)
 
     if (response?.error) {
-      alert(response.error)
-      setInputValue(tempInputValue)
-      setInReplyToItem(newMessage.inReplyToItem)
-    } else {
-      setDownloadObject(null)
+      throw new Error(response.error)
     }
+
+    setDownloadObject(null)
+  } catch (err) {
+    console.log('SEND MESSAGE CRASH:', err)
+    alert('Message failed to send')
   }
+}
 
   const onPhotoUploadDialogDone = useCallback(
     index => {
