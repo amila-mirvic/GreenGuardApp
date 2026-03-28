@@ -13,14 +13,19 @@ export const useSearchUsers = userID => {
       return
     }
 
-    const fetchedUsers = await searchUsersAPI(
-      userID,
-      trimmedKeyword,
-      pagination.current.page,
-      pagination.current.size,
-    )
+    try {
+      const fetchedUsers = await searchUsersAPI(
+        userID,
+        trimmedKeyword,
+        pagination.current.page,
+        pagination.current.size,
+      )
 
-    setUsers(Array.isArray(fetchedUsers) ? fetchedUsers : [])
+      setUsers(Array.isArray(fetchedUsers) ? fetchedUsers : [])
+    } catch (error) {
+      console.log('search users error:', error)
+      setUsers([])
+    }
   }
 
   const removeUserAt = index => {

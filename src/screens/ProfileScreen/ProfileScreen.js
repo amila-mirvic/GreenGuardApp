@@ -10,6 +10,7 @@ import { useCurrentUser } from '../../core/onboarding'
 import { useProfile, usePostMutations } from '../../core/socialgraph/feed'
 import { setLocallyDeletedPost } from '../../core/socialgraph/feed/redux'
 import { useSocialGraphMutations } from '../../core/socialgraph/friendships'
+import { useFocusEffect } from '@react-navigation/native'
 
 const defaultAvatar =
   'https://www.iosapptemplates.com/wp-content/uploads/2019/06/empty-avatar.jpg'
@@ -75,19 +76,21 @@ const ProfileScreen = props => {
     }
   }, [lastScreenTitle])
 
-useEffect(() => {
-  const profileUserID = otherUser?.id ?? currentUser?.id
-  if (!profileUserID) {
-    return
-  }
+useFocusEffect(
+  useCallback(() => {
+    const profileUserID = otherUser?.id ?? currentUser?.id
+    if (!profileUserID) {
+      return
+    }
 
-  const postsUnsubscribe = subscribeToProfileFeedPosts(profileUserID)
-  pullToRefresh(profileUserID)
+    const postsUnsubscribe = subscribeToProfileFeedPosts(profileUserID)
+    pullToRefresh(profileUserID)
 
-  return () => {
-    postsUnsubscribe && postsUnsubscribe()
-  }
-}, [currentUser?.id, otherUser?.id])
+    return () => {
+      postsUnsubscribe && postsUnsubscribe()
+    }
+  }, [currentUser?.id, otherUser?.id]),
+)
 
   const navigateToNotifications = useCallback(() => {
     navigation.navigate(lastScreenTitle + 'Notification', {

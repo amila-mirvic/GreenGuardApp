@@ -27,10 +27,15 @@ export default memo(function SearchBarAlternate(props) {
             style={styles.searchInput}
             placeholder={placeholderTitle}
             onChangeText={onChangeText}
-            defaultValue={value}
+            value={value}
           />
         </View>
-        <Button onPress={onSearchBarCancel} title="Cancel" type="clear" color="#1F6A45"/>
+        <Button
+          onPress={onSearchBarCancel}
+          title="Cancel"
+          type="clear"
+          color="#1F6A45"
+        />
       </View>
     )
   }

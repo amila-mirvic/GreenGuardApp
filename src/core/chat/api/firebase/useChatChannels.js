@@ -16,64 +16,120 @@ export const useChatChannels = () => {
   const [loadingBottom, setLoadingBottom] = useState(false)
 
   const pagination = useRef({ page: 0, size: 25, exhausted: false })
-  const realtimeChannelsRef = useRef(null)
+  const realtimeChannelsRef = useRef([])
   const semaphores = useRef({ isMarkingAsTyping: false })
 
+  const deduplicatedChannels = (oldChannels, newChannels, appendToBottom) => {
+    const oldList = Array.isArray(oldChannels) ? oldChannels.filter(Boolean) : []
+    const newList = Array.isArray(newChannels) ? newChannels.filter(Boolean) : []
+
+    const all = appendToBottom
+      ? [...oldList, ...newList]
+      : [...newList, ...oldList]
+
+    return all.reduce((acc, curr) => {
+      const currId = curr?.id || curr?.channelID
+      if (!currId) {
+        return acc
+      }
+
+      if (!acc.some(friend => (friend?.id || friend?.channelID) === currId)) {
+        acc.push({
+          ...curr,
+          id: currId,
+          participants: Array.isArray(curr?.participants)
+            ? curr.participants
+            : [],
+        })
+      }
+
+      return acc
+    }, [])
+  }
+
   const loadMoreChannels = async userID => {
-    if (pagination.current.exhausted) {
+    if (
+      !userID ||
+      pagination.current.exhausted ||
+      loadingBottom ||
+      !Array.isArray(channels) ||
+      channels.length < pagination.current.size
+    ) {
       return
     }
 
-    setLoadingBottom(true)
+    try {
+      setLoadingBottom(true)
 
-    const newChannels = await listChannelsAPI(
-      userID,
-      pagination.current.page,
-      pagination.current.size,
-    )
+      const newChannels = await listChannelsAPI(
+        userID,
+        pagination.current.page,
+        pagination.current.size,
+      )
 
-    if (newChannels?.length === 0) {
-      pagination.current.exhausted = true
+      const safeChannels = Array.isArray(newChannels) ? newChannels : []
+
+      if (safeChannels.length < pagination.current.size) {
+        pagination.current.exhausted = true
+      }
+
+      if (safeChannels.length > 0) {
+        pagination.current.page += 1
+        setChannels(oldChannels =>
+          deduplicatedChannels(oldChannels, safeChannels, true),
+        )
+      }
+    } catch (error) {
+      console.log('loadMoreChannels error:', error)
+    } finally {
+      setLoadingBottom(false)
     }
-
-    pagination.current.page += 1
-    setLoadingBottom(false)
-
-    setChannels(oldChannels =>
-      deduplicatedChannels(oldChannels, newChannels, true),
-    )
   }
 
   const subscribeToChannels = userID => {
     return subscribeChannelsAPI(userID, newChannels => {
-      realtimeChannelsRef.current = newChannels
+      const safeChannels = Array.isArray(newChannels) ? newChannels : []
+      realtimeChannelsRef.current = safeChannels
+
       setChannels(oldChannels =>
-        deduplicatedChannels(oldChannels, newChannels, false),
+        deduplicatedChannels(oldChannels, safeChannels, false),
       )
     })
   }
 
   const pullToRefresh = async userID => {
-    setRefreshing(true)
-    pagination.current.page = 0
-    pagination.current.exhausted = false
+    if (!userID) return
 
-    const newChannels = await listChannelsAPI(
-      userID,
-      pagination.current.page,
-      pagination.current.size,
-    )
+    try {
+      setRefreshing(true)
+      pagination.current = { page: 0, size: 25, exhausted: false }
 
-    if (newChannels?.length === 0) {
-      pagination.current.exhausted = true
+      const newChannels = await listChannelsAPI(
+        userID,
+        pagination.current.page,
+        pagination.current.size,
+      )
+
+      const safeChannels = Array.isArray(newChannels) ? newChannels : []
+      const merged = deduplicatedChannels(
+        realtimeChannelsRef.current,
+        safeChannels,
+        true,
+      )
+
+      if (safeChannels.length < pagination.current.size) {
+        pagination.current.exhausted = true
+      } else {
+        pagination.current.page += 1
+      }
+
+      setChannels(merged)
+    } catch (error) {
+      console.log('pullToRefresh channels error:', error)
+      setChannels(realtimeChannelsRef.current || [])
+    } finally {
+      setRefreshing(false)
     }
-
-    pagination.current.page += 1
-    setRefreshing(false)
-
-    setChannels(
-      deduplicatedChannels(realtimeChannelsRef.current, newChannels, true),
-    )
   }
 
   const createChannel = async (creator, otherParticipants, name, isAdmin) => {
@@ -114,32 +170,6 @@ export const useChatChannels = () => {
 
   const deleteGroup = async channelID => {
     return await deleteGroupAPI(channelID)
-  }
-
-  const deduplicatedChannels = (oldChannels, newChannels, appendToBottom) => {
-    const oldList = Array.isArray(oldChannels) ? oldChannels.filter(Boolean) : []
-    const newList = Array.isArray(newChannels) ? newChannels.filter(Boolean) : []
-
-    const all = appendToBottom
-      ? [...oldList, ...newList]
-      : [...newList, ...oldList]
-
-    return all.reduce((acc, curr) => {
-      const currId = curr?.id || curr?.channelID
-      if (!currId) {
-        return acc
-      }
-
-      if (!acc.some(friend => (friend?.id || friend?.channelID) === currId)) {
-        acc.push({
-          ...curr,
-          id: currId,
-          participants: Array.isArray(curr?.participants) ? curr.participants : [],
-        })
-      }
-
-      return acc
-    }, [])
   }
 
   return {

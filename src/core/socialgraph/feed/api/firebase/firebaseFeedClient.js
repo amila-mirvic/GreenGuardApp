@@ -265,20 +265,25 @@ export const subscribeToProfileFeedPosts = (userID, callback) => {
     )
 }
 
-// ✅ fallback helper
+// ✅ canonical fallback without orderBy in Firestore query
 export const listCanonicalPostsByAuthor = async (
   userID,
   page = 0,
   size = 25,
 ) => {
   try {
-    const snapshot = await postsRef
-      .where('authorID', '==', userID)
-      .orderBy('createdAt', 'desc')
-      .limit(size)
-      .get()
+    const snapshot = await postsRef.where('authorID', '==', userID).get()
 
-    return snapshot?.docs?.map(doc => doc.data()) ?? []
+    const posts = snapshot?.docs?.map(doc => doc.data()) ?? []
+
+    const sorted = posts.sort(
+      (a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0),
+    )
+
+    const start = page * size
+    const end = start + size
+
+    return sorted.slice(start, end)
   } catch (error) {
     console.log('listCanonicalPostsByAuthor error:', error)
     return []
@@ -296,7 +301,6 @@ export const listProfileFeed = async (userID, page = 0, size = 1000) => {
 
     const posts = res?.data?.posts ?? []
 
-    // ✅ fallback ako profile feed vrati prazno
     if (posts.length === 0) {
       return await listCanonicalPostsByAuthor(userID, page, size)
     }

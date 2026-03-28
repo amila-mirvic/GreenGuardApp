@@ -35,7 +35,12 @@ function IMUserSearchModal(props) {
   }, [])
 
   useEffect(() => {
-    search(keyword)
+    const trimmed = keyword.trim()
+    if (!trimmed.length) {
+      search('')
+      return
+    }
+    search(trimmed)
   }, [keyword])
 
   const renderItem = ({ item, index }) => (
