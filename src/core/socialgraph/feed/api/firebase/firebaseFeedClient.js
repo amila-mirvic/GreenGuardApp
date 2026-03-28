@@ -63,6 +63,12 @@ const dedupeById = items => {
   }, [])
 }
 
+const sortByCreatedAtDesc = items => {
+  return [...items].sort(
+    (a, b) => normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
+  )
+}
+
 const getCanonicalComments = async (postID, page = 0, size = 1000) => {
   try {
     const liveSnap = await postsRef
@@ -71,20 +77,23 @@ const getCanonicalComments = async (postID, page = 0, size = 1000) => {
       .orderBy('createdAt', 'desc')
       .get()
 
-    const historicalSnap = await postsRef
-      .doc(postID)
-      .collection('comments_historical')
-      .orderBy('createdAt', 'desc')
-      .get()
+    let historicalDocs = []
+
+    try {
+      const historicalSnap = await postsRef
+        .doc(postID)
+        .collection('comments_historical')
+        .orderBy('createdAt', 'desc')
+        .get()
+      historicalDocs = historicalSnap?.docs ?? []
+    } catch (historicalError) {
+      console.log('getCanonicalComments historical fallback:', historicalError)
+    }
 
     const live = liveSnap?.docs?.map(doc => normalizeItem(doc)) ?? []
-    const historical =
-      historicalSnap?.docs?.map(doc => normalizeItem(doc)) ?? []
+    const historical = historicalDocs?.map(doc => normalizeItem(doc)) ?? []
 
-    const combined = dedupeById([...live, ...historical]).sort(
-      (a, b) => normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
-    )
-
+    const combined = sortByCreatedAtDesc(dedupeById([...live, ...historical]))
     const start = page * size
     return combined.slice(start, start + size)
   } catch (error) {
@@ -246,28 +255,64 @@ export const addComment = async (commentText, postID, authorID) => {
   }
 }
 
-
-
 export const subscribeToComments = (postID, callback) => {
   if (!postID) {
     callback && callback([])
     return () => {}
   }
 
-  return postsRef
+  let live = []
+  let historical = []
+
+  const emit = () => {
+    callback && callback(sortByCreatedAtDesc(dedupeById([...live, ...historical])))
+  }
+
+  const unsubscribeLive = postsRef
     .doc(postID)
     .collection('comments_live')
     .orderBy('createdAt', 'desc')
-    .onSnapshot(snapshot => {
-      const comments = snapshot.docs.map(doc => ({
-        id: doc.id, // 🔥 KLJUČNO
-        ...doc.data(),
-      }))
+    .onSnapshot(
+      { includeMetadataChanges: true },
+      snapshot => {
+        live = snapshot?.docs?.map(doc => normalizeItem(doc)) ?? []
+        emit()
+      },
+      error => {
+        console.log('subscribeToComments live error:', error)
+        live = []
+        emit()
+      },
+    )
 
-      callback && callback(comments)
-    })
+  let unsubscribeHistorical = null
+
+  try {
+    unsubscribeHistorical = postsRef
+      .doc(postID)
+      .collection('comments_historical')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        { includeMetadataChanges: true },
+        snapshot => {
+          historical = snapshot?.docs?.map(doc => normalizeItem(doc)) ?? []
+          emit()
+        },
+        error => {
+          console.log('subscribeToComments historical error:', error)
+          historical = []
+          emit()
+        },
+      )
+  } catch (historicalError) {
+    console.log('subscribeToComments historical setup error:', historicalError)
+  }
+
+  return () => {
+    unsubscribeLive && unsubscribeLive()
+    unsubscribeHistorical && unsubscribeHistorical()
+  }
 }
-
 
 export const listComments = async (postID, page = 0, size = 1000) => {
   return await getCanonicalComments(postID, page, size)

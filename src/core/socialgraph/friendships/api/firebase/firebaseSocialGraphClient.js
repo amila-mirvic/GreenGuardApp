@@ -33,6 +33,26 @@ const normalizeSearchText = user => {
   return `${fullName} ${username} ${email}`.trim().toLowerCase()
 }
 
+const normalizeReturnedUsers = data => {
+  if (Array.isArray(data?.users)) {
+    return data.users
+  }
+
+  if (Array.isArray(data?.results)) {
+    return data.results
+  }
+
+  if (Array.isArray(data?.items)) {
+    return data.items
+  }
+
+  if (Array.isArray(data)) {
+    return data
+  }
+
+  return []
+}
+
 const getExistingFriendshipIDs = async userID => {
   try {
     const snapshot = await socialGraphRef.doc(userID).collection('friendships').get()
@@ -223,19 +243,10 @@ export const searchUsers = async (userID, keyword, page = 0, size = 1000) => {
       }),
     )
 
-    const users = res?.data?.users
+    const users = normalizeReturnedUsers(res?.data)
 
-    if (Array.isArray(users)) {
-      if (normalizedKeyword.trim().length === 0) {
-        if (users.length > 0) {
-          return users
-        }
-        return await fallbackSearchUsers(userID, '', size)
-      }
-
-      if (users.length > 0) {
-        return users
-      }
+    if (users.length > 0) {
+      return users
     }
 
     return await fallbackSearchUsers(userID, normalizedKeyword, size)

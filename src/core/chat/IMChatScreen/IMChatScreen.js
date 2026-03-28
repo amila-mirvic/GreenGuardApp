@@ -87,7 +87,7 @@ const IMChatScreen = memo(props => {
       ],
       cancelButtonIndex: 2,
     }
-  }, [])
+  }, [localized])
 
   const groupOptionsActionSheet = useMemo(() => {
     return {
@@ -98,7 +98,7 @@ const IMChatScreen = memo(props => {
         localized('Leave Group'),
       ],
     }
-  }, [])
+  }, [localized])
 
   const groupSettingsActionSheet = useMemo(() => {
     return {
@@ -106,7 +106,7 @@ const IMChatScreen = memo(props => {
       options: [...groupOptionsActionSheet.options, localized('Cancel')],
       cancelButtonIndex: 3,
     }
-  }, [])
+  }, [groupOptionsActionSheet, localized])
 
   const adminGroupSettingsActionSheet = useMemo(() => {
     return {
@@ -119,7 +119,7 @@ const IMChatScreen = memo(props => {
       cancelButtonIndex: 4,
       destructiveButtonIndex: 3,
     }
-  }, [])
+  }, [groupOptionsActionSheet, localized])
 
   const privateSettingsActionSheet = useMemo(() => {
     return {
@@ -131,7 +131,7 @@ const IMChatScreen = memo(props => {
       ],
       cancelButtonIndex: 2,
     }
-  }, [])
+  }, [localized])
 
   useLayoutEffect(() => {
     if (!openedFromPushNotification) {
@@ -173,7 +173,7 @@ const IMChatScreen = memo(props => {
       subscribeMessagesRef.current && subscribeMessagesRef.current()
       unsubscribe && unsubscribe()
     }
-  }, [currentUser?.id])
+  }, [currentUser?.id, route.params.channel])
 
   useEffect(() => {
     if (downloadObject !== null) {
@@ -182,23 +182,24 @@ const IMChatScreen = memo(props => {
   }, [downloadObject])
 
   const onListEndReached = useCallback(() => {
-    loadMoreMessages(route?.params?.channel?.id)
-  }, [loadMoreMessages, route?.params?.channel?.id])
+    const channelID = route?.params?.channel?.id || route?.params?.channel?.channelID
+    loadMoreMessages(channelID)
+  }, [loadMoreMessages, route?.params?.channel])
 
-  const configureNavigation = channel => {
-    if (!channel) {
+  const configureNavigation = passedChannel => {
+    if (!passedChannel) {
       return
     }
 
-    var title = channel?.name
-    var isGroupChat = channel?.participants?.length > 2
-    if (!title && channel?.participants?.length > 1) {
-      const otherUser = channel.participants.find(
+    let title = passedChannel?.name
+    const isGroupChat = passedChannel?.participants?.length > 2
+    if (!title && passedChannel?.participants?.length > 1) {
+      const otherUser = passedChannel.participants.find(
         participant => participant.id !== currentUser.id,
       )
       title =
         otherUser?.fullName ||
-        (otherUser?.firstName ?? '') + ' ' + (otherUser?.lastName ?? '')
+        `${otherUser?.firstName ?? ''} ${otherUser?.lastName ?? ''}`.trim()
     }
 
     navigation.setOptions({
@@ -233,7 +234,6 @@ const IMChatScreen = memo(props => {
     if (!remoteChannel) {
       return
     }
-    console.log(`Remote channel changed`)
     const hydratedChannel = channelWithHydratedOtherParticipants(remoteChannel)
     setChannel(hydratedChannel)
     markThreadItemAsReadIfNeeded(hydratedChannel)
@@ -243,17 +243,15 @@ const IMChatScreen = memo(props => {
     }
   }, [remoteChannel])
 
-  const channelWithHydratedOtherParticipants = channel => {
-    const allParticipants = channel?.participants
+  const channelWithHydratedOtherParticipants = passedChannel => {
+    const allParticipants = passedChannel?.participants
     if (!allParticipants) {
-      return channel
+      return passedChannel
     }
-    const otherParticipants =
-      allParticipants &&
-      allParticipants.filter(
-        participant => participant && participant.id !== currentUser.id,
-      )
-    return { ...channel, otherParticipants }
+    const otherParticipants = allParticipants.filter(
+      participant => participant && participant.id !== currentUser.id,
+    )
+    return { ...passedChannel, otherParticipants }
   }
 
   const onGroupSettingsActionDone = useCallback(
@@ -286,16 +284,17 @@ const IMChatScreen = memo(props => {
 
   const onPrivateSettingsActionDone = useCallback(
     (index, passedChannel) => {
-      if (index == 2) {
+      if (index === 2) {
         return
       }
-      var message, actionCallback
-      if (index == 0) {
+      let message
+      let actionCallback
+      if (index === 0) {
         actionCallback = onUserBlockPress
         message = localized(
           "Are you sure you want to block this user? You won't see their messages again.",
         )
-      } else if (index == 1) {
+      } else if (index === 1) {
         actionCallback = onUserReportPress
         message = localized(
           "Are you sure you want to report this user? You won't see their messages again.",
@@ -316,7 +315,9 @@ const IMChatScreen = memo(props => {
   )
 
   const onSettingsPress = useCallback(() => {
-    if (channel?.admins && channel?.admins?.includes(currentUser?.id)) {
+    const targetChannel = remoteChannel || channel
+
+    if (targetChannel?.admins && targetChannel?.admins?.includes(currentUser?.id)) {
       showActionSheetWithOptions(
         {
           title: adminGroupSettingsActionSheet.title,
@@ -325,16 +326,16 @@ const IMChatScreen = memo(props => {
           destructiveButtonIndex:
             adminGroupSettingsActionSheet.destructiveButtonIndex,
         },
-        index => onAdminGroupSettingsActionDone(index, remoteChannel),
+        index => onAdminGroupSettingsActionDone(index, targetChannel),
       )
-    } else if (channel?.admins) {
+    } else if (targetChannel?.admins) {
       showActionSheetWithOptions(
         {
           title: groupSettingsActionSheet.title,
           options: groupSettingsActionSheet.options,
           cancelButtonIndex: groupSettingsActionSheet.cancelButtonIndex,
         },
-        index => onGroupSettingsActionDone(index, remoteChannel),
+        index => onGroupSettingsActionDone(index, targetChannel),
       )
     } else {
       showActionSheetWithOptions(
@@ -343,16 +344,28 @@ const IMChatScreen = memo(props => {
           options: privateSettingsActionSheet.options,
           cancelButtonIndex: privateSettingsActionSheet.cancelButtonIndex,
         },
-        index => onPrivateSettingsActionDone(index, remoteChannel),
+        index => onPrivateSettingsActionDone(index, targetChannel),
       )
     }
   }, [
-    channel?.admins,
+    adminGroupSettingsActionSheet,
+    channel,
     currentUser?.id,
-    onGroupSettingsActionDone,
+    groupSettingsActionSheet,
     onAdminGroupSettingsActionDone,
+    onGroupSettingsActionDone,
     onPrivateSettingsActionDone,
+    privateSettingsActionSheet,
+    remoteChannel,
+    showActionSheetWithOptions,
   ])
+
+  const showRenameDialog = useCallback(
+    shouldShow => {
+      setIsRenameDialogVisible(shouldShow)
+    },
+    [setIsRenameDialogVisible],
+  )
 
   const onViewMembers = useCallback(
     passedChannel => {
@@ -360,135 +373,60 @@ const IMChatScreen = memo(props => {
         channel: passedChannel,
       })
     },
-    [navigation, remoteChannel],
+    [navigation],
   )
 
   const onChangeName = useCallback(
-    async text => {
-      const channelID = channel?.channelID || channel?.id
-      setIsRenameDialogVisible(false)
-      const data = {
-        ...channel,
-        name: text,
-        content: `${
-          currentUser?.firstName ?? 'Someone'
-        } has renamed the group.`,
-      }
-      await updateGroup(channelID, currentUser?.id, data)
-      setChannel(data)
-      configureNavigation(data)
+    async newText => {
+      const channelID = channel?.id || channel?.channelID
+      await updateGroup(channelID, currentUser.id, {
+        name: newText,
+      })
+      showRenameDialog(false)
     },
-    [
-      channel,
-      currentUser?.id,
-      setChannel,
-      configureNavigation,
-      updateGroup,
-      setIsRenameDialogVisible,
-    ],
+    [channel, currentUser?.id, showRenameDialog, updateGroup],
   )
 
   const onLeave = useCallback(
-    passedChannel => {
-      if (
-        passedChannel?.admins.length === 1 &&
-        passedChannel?.admins?.includes(currentUser?.id)
-      ) {
-        Alert.alert(
-          localized('Set a new admin'),
-          localized(
-            'You are the only admin of this group so please choose a new admin first in order to leave this group',
-          ),
-          [{ text: 'Okay' }],
-          { cancelable: false },
-        )
-      } else {
-        Alert.alert(
-          localized(`Leave ${passedChannel?.name ?? 'group'}`),
-          localized('Are you sure you want to leave this group?'),
-          [
-            {
-              text: 'Yes',
-              onPress: () => onLeaveGroupConfirmed(passedChannel),
-              style: 'destructive',
-            },
-            { text: 'No' },
-          ],
-          { cancelable: false },
-        )
-      }
+    async passedChannel => {
+      const channelID = passedChannel?.id || passedChannel?.channelID
+      await leaveGroup(
+        channelID,
+        currentUser.id,
+        `${currentUser.firstName} left this group.`,
+      )
+      navigation.goBack()
     },
-    [onLeaveGroupConfirmed, channel],
+    [currentUser, leaveGroup, navigation],
   )
 
   const onDeleteGroup = useCallback(
-    passedChannel => {
-      if (passedChannel?.admins?.includes(currentUser?.id)) {
-        Alert.alert(
-          localized('Delete Group'),
-          localized('Are you sure you want to delete this group?'),
-          [
-            {
-              text: 'Delete Group',
-              onPress: () => onDeleteGroupConfirmed(passedChannel),
-              style: 'destructive',
-            },
-            { text: 'No' },
-          ],
-          { cancelable: false },
-        )
-      }
-    },
-    [onLeaveGroupConfirmed, channel],
-  )
-
-  const onLeaveGroupConfirmed = useCallback(
     async passedChannel => {
-      setLoading(true)
-      await leaveGroup(
-        passedChannel?.id,
-        currentUser?.id,
-        `${currentUser?.firstName ?? 'Someone'} has left the group.`,
-      )
-      setLoading(false)
-      navigation.goBack(null)
+      const channelID = passedChannel?.id || passedChannel?.channelID
+      await deleteGroup(channelID)
+      navigation.goBack()
     },
-    [leaveGroup, navigation, channel, currentUser?.id],
+    [deleteGroup, navigation],
   )
 
-  const onDeleteGroupConfirmed = useCallback(
-    async passedChannel => {
-      setLoading(true)
-      await deleteGroup(passedChannel?.id)
-      setLoading(false)
-      navigation.goBack(null)
-    },
-    [deleteGroup, channel?.id, navigation],
-  )
-
-  const showRenameDialog = useCallback(
-    show => {
-      setIsRenameDialogVisible(show)
-    },
-    [setIsRenameDialogVisible],
-  )
-
-  const markThreadItemAsReadIfNeeded = channel => {
+  const markThreadItemAsReadIfNeeded = passedChannel => {
     const {
       id: channelID,
+      channelID: fallbackChannelID,
       lastThreadMessageId,
       readUserIDs,
       lastMessage,
-    } = channel || {}
+    } = passedChannel || {}
 
     const userID = currentUser?.id
     const safeReadUserIDs = Array.isArray(readUserIDs) ? readUserIDs : []
     const isRead = safeReadUserIDs.includes(userID)
+    const resolvedChannelID = channelID || fallbackChannelID
 
-    if (!isRead && channelID && lastMessage && userID) {
+    if (!isRead && resolvedChannelID && lastMessage && userID) {
       const newReadUserIDs = [...safeReadUserIDs, userID]
       markChannelMessageAsRead(
-        channelID,
+        resolvedChannelID,
         userID,
         lastThreadMessageId,
         newReadUserIDs,
@@ -524,59 +462,42 @@ const IMChatScreen = memo(props => {
     return null
   }
 
-const onSendInput = async () => {
-  if (!inputValue && !downloadObject) {
-    return
-  }
+  const onSendInput = async () => {
+    if (!inputValue && !downloadObject) {
+      return
+    }
 
-  let tempInputValue = inputValue
+    let tempInputValue = inputValue
 
-  if (!tempInputValue) {
-    tempInputValue = formatMessage(downloadObject, localized)
-  }
+    if (!tempInputValue) {
+      tempInputValue = formatMessage(downloadObject, localized)
+    }
 
-  // ✅ KLJUČNO: koristi pravi message object
-  const newMessage = getMessageObject(
-    currentUser,
-    { content: tempInputValue },
-    downloadObject,
-    inReplyToItem,
-    false
-  )
+    const newMessage = optimisticSetMessage(
+      currentUser,
+      { content: tempInputValue },
+      downloadObject,
+      inReplyToItem,
+    )
 
-  richTextInputRef.current?.clear()
-  setInputValue('')
-  setInReplyToItem(null)
+    richTextInputRef.current?.clear()
+    setInputValue('')
+    setInReplyToItem(null)
 
-  const currentChannelID = channel?.channelID || channel?.id
+    let targetChannel = channel
+    const currentChannelID = channel?.channelID || channel?.id
 
-  let targetChannel = channel
+    if (!currentChannelID) {
+      targetChannel = await createOne2OneChannel()
+      if (!targetChannel) {
+        setInputValue(tempInputValue)
+        setInReplyToItem(newMessage.inReplyToItem)
+        return
+      }
+    }
 
-  // ✅ ako channel ne postoji — kreiraj
-  if (!currentChannelID) {
-    targetChannel = await createOne2OneChannel()
-    if (!targetChannel) return
-  }
+    const response = await sendMessageAPI(newMessage, targetChannel)
 
-  // ✅ OVO JE KLJUČ: koristi SDK sendMessage
-  const response = await sendMessageAPI(newMessage, targetChannel)
-
-  if (response?.error) {
-    alert(response.error)
-    setInputValue(tempInputValue)
-    setInReplyToItem(newMessage.inReplyToItem)
-  } else {
-    setDownloadObject(null)
-  }
-}
-
-
-  const sendMessage = async (
-    newMessage,
-    tempInputValue,
-    newChannel = channel,
-  ) => {
-    const response = await sendMessageAPI(newMessage, newChannel)
     if (response?.error) {
       alert(response.error)
       setInputValue(tempInputValue)
@@ -735,14 +656,14 @@ const onSendInput = async () => {
     passedChannel => {
       reportAbuse(passedChannel, 'block')
     },
-    [channel?.otherParticipants, currentUser?.id, reportAbuse],
+    [currentUser?.id, reportAbuse],
   )
 
   const onUserReportPress = useCallback(
     passedChannel => {
       reportAbuse(passedChannel, 'report')
     },
-    [channel?.otherParticipants, currentUser?.id, reportAbuse],
+    [currentUser?.id, reportAbuse],
   )
 
   const reportAbuse = async (passedChannel, type) => {
@@ -761,10 +682,10 @@ const onSendInput = async () => {
   }
 
   const onReplyActionPress = useCallback(
-    inReplyToItem => {
-      setInReplyToItem(inReplyToItem)
+    replyItem => {
+      setInReplyToItem(replyItem)
     },
-    [setInReplyToItem, inReplyToItem],
+    [setInReplyToItem],
   )
 
   const onReplyingToDismiss = useCallback(() => {
@@ -795,22 +716,22 @@ const onSendInput = async () => {
         }
       }
     },
-    [navigation, currentUser?.id],
+    [navigation, currentUser?.id, isChatUserItemPress],
   )
 
   const onReaction = useCallback(
     async (reaction, message) => {
-      await addReaction(message, currentUser, reaction, channel?.id)
+      await addReaction(message, currentUser, reaction, channel?.id || channel?.channelID)
     },
-    [addReaction, currentUser],
+    [addReaction, channel, currentUser],
   )
 
-  const onForwardMessageActionPress = useCallback(async (channel, message) => {
+  const onForwardMessageActionPress = useCallback(async (targetChannel, message) => {
     let tempInputValue = { content: message.content }
     if (!tempInputValue) {
       tempInputValue = formatMessage(downloadObject, localized)
     }
-    let hydrateChannel = channelWithHydratedOtherParticipants(channel)
+    let hydrateChannel = channelWithHydratedOtherParticipants(targetChannel)
 
     const newMessage = getMessageObject(
       currentUser,
@@ -820,20 +741,19 @@ const onSendInput = async () => {
       true,
     )
 
-    if (hydrateChannel?.title) {
+    if (hydrateChannel?.title || hydrateChannel?.channelID || hydrateChannel?.id) {
       const response = await sendMessageAPI(newMessage, hydrateChannel)
       if (response?.error) {
         alert(response.error)
         return false
-      } else {
-        setInReplyToItem(null)
-        return true
       }
+      setInReplyToItem(null)
+      return true
     }
 
     const newChannel = await createChannel(
       currentUser,
-      channelWithHydratedOtherParticipants(channel)?.otherParticipants,
+      channelWithHydratedOtherParticipants(targetChannel)?.otherParticipants,
     )
 
     if (newChannel) {
@@ -841,14 +761,13 @@ const onSendInput = async () => {
       if (response?.error) {
         alert(response.error)
         return false
-      } else {
-        setInReplyToItem(null)
-        return true
       }
+      setInReplyToItem(null)
+      return true
     }
     setInReplyToItem(null)
     return false
-  }, [])
+  }, [channel, createChannel, currentUser, downloadObject, getMessageObject, localized, sendMessageAPI])
 
   return (
     <IMChat

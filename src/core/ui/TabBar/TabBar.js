@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { View } from 'react-native'
+import { View, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../dopebase'
 import dynamicStyles from './styles'
@@ -15,15 +15,11 @@ export function TabBarBuilder({ tabIcons, state, navigation, descriptors }) {
     descriptors[state?.routes[state?.index]?.key]?.options?.tabBarStyle?.display
 
   const containerStyle = useMemo(() => {
-    if (insets.bottom) {
-      return {
-        paddingBottom: insets.bottom,
-        minHeight: 80,
-      }
-    }
+    const safeBottomInset = Math.max(insets.bottom || 0, Platform.OS === 'android' ? 10 : 0)
+
     return {
-      paddingBottom: 16,
-      minHeight: 45,
+      paddingBottom: safeBottomInset,
+      minHeight: 64 + safeBottomInset,
     }
   }, [insets.bottom])
 
@@ -43,9 +39,9 @@ export function TabBarBuilder({ tabIcons, state, navigation, descriptors }) {
         })}
       </View>
     )
-  } else {
-    return null
   }
+
+  return null
 }
 
 export default TabBarBuilder

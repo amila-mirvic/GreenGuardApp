@@ -45,7 +45,7 @@ const normalizeItem = (docOrData, fallbackID = null) => {
   }
 
   return {
-    id: docOrData?.id || fallbackID,
+    id: docOrData?.id || docOrData?.channelID || fallbackID,
     ...docOrData,
   }
 }
@@ -71,6 +71,22 @@ const sortByCreatedAtDesc = items => {
   )
 }
 
+const parseCallableArray = (data, primaryKey) => {
+  if (Array.isArray(data?.[primaryKey])) {
+    return data[primaryKey]
+  }
+
+  if (Array.isArray(data)) {
+    return data
+  }
+
+  if (Array.isArray(data?.items)) {
+    return data.items
+  }
+
+  return []
+}
+
 const getCanonicalMessages = async (channelID, page = 0, size = 1000) => {
   try {
     const liveSnap = await channelsRef
@@ -79,15 +95,21 @@ const getCanonicalMessages = async (channelID, page = 0, size = 1000) => {
       .orderBy('createdAt', 'desc')
       .get()
 
-    const historicalSnap = await channelsRef
-      .doc(channelID)
-      .collection('messages_historical')
-      .orderBy('createdAt', 'desc')
-      .get()
+    let historicalDocs = []
+
+    try {
+      const historicalSnap = await channelsRef
+        .doc(channelID)
+        .collection('messages_historical')
+        .orderBy('createdAt', 'desc')
+        .get()
+      historicalDocs = historicalSnap?.docs ?? []
+    } catch (historicalError) {
+      console.log('getCanonicalMessages historical fallback:', historicalError)
+    }
 
     const live = liveSnap?.docs?.map(doc => normalizeItem(doc)) ?? []
-    const historical =
-      historicalSnap?.docs?.map(doc => normalizeItem(doc)) ?? []
+    const historical = historicalDocs?.map(doc => normalizeItem(doc)) ?? []
 
     const merged = sortByCreatedAtDesc(dedupeById([...live, ...historical]))
     const start = page * size
@@ -107,15 +129,21 @@ const getCanonicalChannels = async (userID, page = 0, size = 1000) => {
       .orderBy('createdAt', 'desc')
       .get()
 
-    const historicalSnap = await socialFeedsRef
-      .doc(userID)
-      .collection('chat_feed_historical')
-      .orderBy('createdAt', 'desc')
-      .get()
+    let historicalDocs = []
+
+    try {
+      const historicalSnap = await socialFeedsRef
+        .doc(userID)
+        .collection('chat_feed_historical')
+        .orderBy('createdAt', 'desc')
+        .get()
+      historicalDocs = historicalSnap?.docs ?? []
+    } catch (historicalError) {
+      console.log('getCanonicalChannels historical fallback:', historicalError)
+    }
 
     const live = liveSnap?.docs?.map(doc => normalizeItem(doc)) ?? []
-    const historical =
-      historicalSnap?.docs?.map(doc => normalizeItem(doc)) ?? []
+    const historical = historicalDocs?.map(doc => normalizeItem(doc)) ?? []
 
     const merged = sortByCreatedAtDesc(dedupeById([...live, ...historical]))
     const start = page * size
@@ -160,6 +188,7 @@ const buildChannelPayload = (creator, otherParticipants, name, isAdmin = false) 
 
   const payload = {
     id: channelID,
+    channelID,
     creatorID: creator?.id,
     participants,
   }
@@ -190,14 +219,18 @@ const findMessageByID = async (channelID, messageID) => {
       return normalizeItem(liveDoc, messageID)
     }
 
-    const historicalDoc = await channelsRef
-      .doc(channelID)
-      .collection('messages_historical')
-      .doc(messageID)
-      .get()
+    try {
+      const historicalDoc = await channelsRef
+        .doc(channelID)
+        .collection('messages_historical')
+        .doc(messageID)
+        .get()
 
-    if (historicalDoc?.exists) {
-      return normalizeItem(historicalDoc, messageID)
+      if (historicalDoc?.exists) {
+        return normalizeItem(historicalDoc, messageID)
+      }
+    } catch (historicalError) {
+      console.log('findMessageByID historical fallback:', historicalError)
     }
 
     return null
@@ -257,9 +290,9 @@ export const listChannels = async (userID, page = 0, size = 1000) => {
       }),
     )
 
-    const channels = res?.data?.channels ?? []
+    const channels = parseCallableArray(res?.data, 'channels')
 
-    if (Array.isArray(channels) && channels.length > 0) {
+    if (channels.length > 0) {
       return channels.map(item => normalizeItem(item))
     }
 
@@ -285,7 +318,13 @@ export const createChannel = async (
     )
 
     const res = await withTimeout(ChatFunctions().createChannel(payload))
-    return res?.data ?? payload
+    const responseData = res?.data
+
+    if (responseData?.id || responseData?.channelID) {
+      return normalizeItem(responseData, payload.id)
+    }
+
+    return payload
   } catch (error) {
     console.log('createChannel error:', error)
     return null
@@ -376,11 +415,18 @@ export const sendMessage = async (channel, newMessage) => {
 
     await channelsRef.doc(channelID).set(
       {
+        id: channelID,
+        channelID,
+        participants: Array.isArray(channel?.participants) ? channel.participants : [],
+        name: channel?.name || channel?.title || '',
+        admins: Array.isArray(channel?.admins) ? channel.admins : null,
         lastMessage:
           fallbackMessage?.content?.length > 0
             ? fallbackMessage.content
-            : fallbackMessage.media ?? '',
+            : fallbackMessage?.media?.url || fallbackMessage?.media || '',
         lastMessageDate: fallbackMessage.createdAt,
+        createdAt: channel?.createdAt || fallbackMessage.createdAt,
+        creatorID: channel?.creatorID || fallbackMessage.senderID,
         lastMessageSenderId: fallbackMessage.senderID,
         lastThreadMessageId: fallbackMessage.id,
         readUserIDs: [fallbackMessage.senderID],
@@ -431,6 +477,7 @@ export const subscribeToMessages = (channelID, callback) => {
     .collection('messages_live')
     .orderBy('createdAt', 'desc')
     .onSnapshot(
+      { includeMetadataChanges: true },
       snapshot => {
         live = snapshot?.docs?.map(doc => normalizeItem(doc)) ?? []
         emit()
@@ -442,21 +489,28 @@ export const subscribeToMessages = (channelID, callback) => {
       },
     )
 
-  const unsubscribeHistorical = channelsRef
-    .doc(channelID)
-    .collection('messages_historical')
-    .orderBy('createdAt', 'desc')
-    .onSnapshot(
-      snapshot => {
-        historical = snapshot?.docs?.map(doc => normalizeItem(doc)) ?? []
-        emit()
-      },
-      error => {
-        console.log('subscribeToMessages historical error:', error)
-        historical = []
-        emit()
-      },
-    )
+  let unsubscribeHistorical = null
+
+  try {
+    unsubscribeHistorical = channelsRef
+      .doc(channelID)
+      .collection('messages_historical')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        { includeMetadataChanges: true },
+        snapshot => {
+          historical = snapshot?.docs?.map(doc => normalizeItem(doc)) ?? []
+          emit()
+        },
+        error => {
+          console.log('subscribeToMessages historical error:', error)
+          historical = []
+          emit()
+        },
+      )
+  } catch (historicalError) {
+    console.log('subscribeToMessages historical setup error:', historicalError)
+  }
 
   return () => {
     unsubscribeLive && unsubscribeLive()
@@ -465,6 +519,24 @@ export const subscribeToMessages = (channelID, callback) => {
 }
 
 export const listMessages = async (channelID, page = 0, size = 1000) => {
+  try {
+    const res = await withTimeout(
+      ChatFunctions().listMessages({
+        channelID,
+        page,
+        size,
+      }),
+    )
+
+    const messages = parseCallableArray(res?.data, 'messages')
+
+    if (messages.length > 0) {
+      return messages.map(item => normalizeItem(item))
+    }
+  } catch (error) {
+    console.log('listMessages error:', error)
+  }
+
   return await getCanonicalMessages(channelID, page, size)
 }
 

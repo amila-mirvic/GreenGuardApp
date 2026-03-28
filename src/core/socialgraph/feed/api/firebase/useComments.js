@@ -6,6 +6,19 @@ import {
 
 const batchSize = 25
 
+const normalizeCreatedAt = value => {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return Number.isNaN(n) ? 0 : n
+  }
+  if (value?.seconds) return value.seconds
+  if (typeof value?.toDate === 'function') {
+    return Math.floor(value.toDate().getTime() / 1000)
+  }
+  return 0
+}
+
 export const useComments = () => {
   const [comments, setComments] = useState(null)
   const [commentsLoading, setCommentsLoading] = useState(false)
@@ -19,15 +32,20 @@ export const useComments = () => {
       ? [...oldList, ...newList]
       : [...newList, ...oldList]
 
-    return all.reduce((acc, curr) => {
-      if (!curr?.id) {
+    const merged = all.reduce((acc, curr) => {
+      const currId = curr?.id
+      if (!currId) {
         return acc
       }
-      if (!acc.some(comment => comment?.id === curr.id)) {
+      if (!acc.some(comment => comment?.id === currId)) {
         acc.push(curr)
       }
       return acc
     }, [])
+
+    return merged.sort(
+      (a, b) => normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
+    )
   }
 
   const loadMoreComments = async postID => {

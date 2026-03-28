@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from 'react'
-import { View, Text, TouchableOpacity, Image, Alert } from 'react-native'
+import { View, Text, TouchableOpacity, Image, Alert, Pressable } from 'react-native'
 import { useTheme, TouchableIcon } from '../../core/dopebase'
 import { timeFormat } from '../../core/helpers/timeFormat'
 import FeedMedia from './FeedMedia'
@@ -122,42 +122,39 @@ const FeedItem = memo(props => {
   }, [onSharePost, item])
 
   const handleMorePress = useCallback(() => {
-    if (isOwner) {
-      Alert.alert('Post options', '', [
-        ...(onSharePost
-          ? [{ text: 'Share', onPress: handleSharePost }]
-          : []),
-        ...(onDeletePost
-          ? [
-              {
-                text: 'Delete post',
-                style: 'destructive',
-                onPress: handleDeletePost,
-              },
-            ]
-          : []),
-        { text: 'Cancel', style: 'cancel' },
-      ])
-      return
+    const options = []
+
+    if (onSharePost) {
+      options.push({ text: 'Share', onPress: handleSharePost })
     }
 
-    Alert.alert('Post options', '', [
-      ...(onSharePost
-        ? [{ text: 'Share', onPress: handleSharePost }]
-        : []),
-      ...(onUserReport
-        ? [{ text: 'Report post', style: 'destructive', onPress: handleReportPost }]
-        : []),
-      { text: 'Cancel', style: 'cancel' },
-    ])
+    if (isOwner && onDeletePost) {
+      options.push({
+        text: 'Delete post',
+        style: 'destructive',
+        onPress: handleDeletePost,
+      })
+    }
+
+    if (!isOwner && onUserReport) {
+      options.push({
+        text: 'Report post',
+        style: 'destructive',
+        onPress: handleReportPost,
+      })
+    }
+
+    options.push({ text: 'Cancel', style: 'cancel' })
+
+    Alert.alert('Post options', '', options, { cancelable: true })
   }, [
-    isOwner,
-    onSharePost,
-    onDeletePost,
-    onUserReport,
-    handleSharePost,
     handleDeletePost,
     handleReportPost,
+    handleSharePost,
+    isOwner,
+    onDeletePost,
+    onSharePost,
+    onUserReport,
   ])
 
   const renderReactionIcon = (iconSource, reaction, index) => (
@@ -229,15 +226,13 @@ const FeedItem = memo(props => {
           </View>
         </View>
 
-        <TouchableIcon
+        <Pressable
           onPress={handleMorePress}
-          imageStyle={styles.moreIcon}
-          containerStyle={[
-            styles.moreIconContainer,
-            { marginTop: 10, marginRight: 10 },
-          ]}
-          iconSource={theme.icons.more}
-        />
+          hitSlop={12}
+          style={{ marginTop: 10, marginRight: 10, zIndex: 20 }}
+        >
+          <Image source={theme.icons.more} style={styles.moreIcon} />
+        </Pressable>
       </View>
 
       {!!item?.postText && <Text style={styles.body}>{item.postText}</Text>}
