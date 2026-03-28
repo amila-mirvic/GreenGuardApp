@@ -25,17 +25,17 @@ const ChatScreen = props => {
         <TouchableIcon
           imageStyle={{ tintColor: colorSet.primaryText }}
           iconSource={theme.icons.inscription}
-          onPress={() => navigation.navigate('CreateGroup')}
+          onPress={() =>
+            navigation.navigate('UserSearchScreen', { followEnabled: false })
+          }
         />
       ),
-
       headerStyle: {
         backgroundColor: colorSet.primaryBackground,
       },
       headerTintColor: colorSet.primaryText,
     })
-  }, [])
-
+  }, [navigation, theme, appearance])
 
   const onFriendItemPress = friend => {
     const id1 = currentUser.id || currentUser.userID
@@ -57,6 +57,7 @@ const ChatScreen = props => {
   const onEmptyStatePress = () => {
     onSearchButtonPress()
   }
+
   const onSenderProfilePicturePress = item => {
     console.log(item)
   }

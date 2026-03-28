@@ -1,32 +1,74 @@
-import { db } from '../../firebase/config'
+import { functions } from '../../firebase/config'
 
-export const notificationsRef = db.collection('notifications')
+const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
+
+const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
+  let timeoutId
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
+const fetchNotifications = async userId => {
+  if (!userId) {
+    return []
+  }
+
+  try {
+    const res = await withTimeout(
+      functions().httpsCallable('listNotifications')({
+        userID: userId,
+        page: 0,
+        size: 100,
+      }),
+    )
+
+    return res?.data?.notifications ?? []
+  } catch (error) {
+    console.log('fetchNotifications error:', error)
+    return []
+  }
+}
 
 export const subscribeNotifications = (userId, callback) => {
-  return notificationsRef
-    .where('toUserID', '==', userId)
-    .orderBy('createdAt', 'desc')
-    .limit(100)
-    .onSnapshot(
-      notificationSnapshot => {
-        const notifications = []
-        notificationSnapshot.forEach(notificationDoc => {
-          const notification = notificationDoc.data()
-          notification.id = notificationDoc.id
-          notifications.push(notification)
-        })
-        callback(notifications)
-      },
-      error => {
-        console.log(error)
-        alert(error)
-      },
-    )
+  let isMounted = true
+
+  const load = async () => {
+    const notifications = await fetchNotifications(userId)
+    if (isMounted) {
+      callback && callback(notifications)
+    }
+  }
+
+  load()
+
+  const intervalId = setInterval(load, 15000)
+
+  return () => {
+    isMounted = false
+    clearInterval(intervalId)
+  }
 }
 
 export const updateNotification = async notification => {
   try {
-    await notificationsRef.doc(notification.id).update({ ...notification })
+    await withTimeout(
+      functions().httpsCallable('updateNotification')({
+        notificationID: notification?.id,
+        userID: notification?.toUserID,
+      }),
+    )
 
     return { success: true }
   } catch (error) {

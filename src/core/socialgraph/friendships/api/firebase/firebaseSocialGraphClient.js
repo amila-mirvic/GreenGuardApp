@@ -1,6 +1,8 @@
+import firestore from '@react-native-firebase/firestore'
 import { FriendshipFunctions, DocRef } from './friendshipRef'
 
 const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
+const usersRef = firestore().collection('users')
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
   let timeoutId
@@ -17,6 +19,42 @@ const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => 
     if (timeoutId) {
       clearTimeout(timeoutId)
     }
+  }
+}
+
+const normalizeSearchText = user => {
+  const firstName = user?.firstName || ''
+  const lastName = user?.lastName || ''
+  const fullName = `${firstName} ${lastName}`.trim()
+  const username = user?.username || ''
+  const email = user?.email || ''
+
+  return `${fullName} ${username} ${email}`.trim().toLowerCase()
+}
+
+const fallbackSearchUsers = async (userID, keyword, size = 1000) => {
+  try {
+    const snapshot = await usersRef.get()
+    const users = snapshot?.docs?.map(doc => doc.data()) ?? []
+    const normalizedKeyword = (keyword || '').trim().toLowerCase()
+
+    if (!normalizedKeyword.length) {
+      return []
+    }
+
+    const results = users.filter(user => {
+      if (!user?.id || user.id === userID) {
+        return false
+      }
+
+      const haystack = normalizeSearchText(user)
+      return haystack.includes(normalizedKeyword)
+    })
+
+    return results.slice(0, size)
+  } catch (error) {
+    console.log('fallbackSearchUsers error:', error)
+    return []
   }
 }
 
@@ -154,20 +192,33 @@ export const fetchOtherUserFriendships = async (
 }
 
 export const searchUsers = async (userID, keyword, page = 0, size = 1000) => {
+  const trimmedKeyword = (keyword || '').trim()
+
+  if (!trimmedKeyword.length) {
+    return []
+  }
+
   const instance = FriendshipFunctions().searchUsers
+
   try {
     const res = await withTimeout(
       instance({
         userID,
-        keyword,
+        keyword: trimmedKeyword,
         page,
         size,
       }),
     )
 
-    return res?.data?.users
+    const users = res?.data?.users
+
+    if (Array.isArray(users) && users.length > 0) {
+      return users
+    }
+
+    return await fallbackSearchUsers(userID, trimmedKeyword, size)
   } catch (error) {
     console.log(error)
-    return null
+    return await fallbackSearchUsers(userID, trimmedKeyword, size)
   }
 }

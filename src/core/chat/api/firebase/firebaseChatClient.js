@@ -20,6 +20,49 @@ const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => 
   }
 }
 
+const dedupeParticipants = participants => {
+  const safeParticipants = Array.isArray(participants)
+    ? participants.filter(Boolean)
+    : []
+
+  return safeParticipants.reduce((acc, participant) => {
+    if (!participant?.id) {
+      return acc
+    }
+    if (!acc.some(item => item?.id === participant.id)) {
+      acc.push(participant)
+    }
+    return acc
+  }, [])
+}
+
+const buildChannelPayload = (creator, otherParticipants, name, isAdmin = false) => {
+  const participants = dedupeParticipants([creator, ...(otherParticipants || [])])
+  const isGroupChat = Boolean(isAdmin || (name && name.trim().length > 0) || participants.length > 2)
+
+  let channelID = ''
+
+  if (!isGroupChat && participants.length === 2) {
+    const sortedIDs = participants.map(item => item.id).sort()
+    channelID = `${sortedIDs[0]}${sortedIDs[1]}`
+  } else {
+    channelID = `${creator?.id}_${Date.now()}`
+  }
+
+  const payload = {
+    id: channelID,
+    creatorID: creator?.id,
+    participants,
+  }
+
+  if (isGroupChat) {
+    payload.name = (name || '').trim()
+    payload.admins = [creator?.id]
+  }
+
+  return payload
+}
+
 export const subscribeChannels = (userID, callback) => {
   if (!userID) {
     callback && callback([])
@@ -83,15 +126,15 @@ export const createChannel = async (
   isAdmin = false,
 ) => {
   try {
-    const res = await withTimeout(
-      ChatFunctions().createChannel({
-        creator,
-        otherParticipants,
-        name,
-        isAdmin,
-      }),
+    const payload = buildChannelPayload(
+      creator,
+      otherParticipants,
+      name,
+      isAdmin,
     )
-    return res?.data ?? null
+
+    const res = await withTimeout(ChatFunctions().createChannel(payload))
+    return res?.data ?? payload
   } catch (error) {
     console.log('createChannel error:', error)
     return null
