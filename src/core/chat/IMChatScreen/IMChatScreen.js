@@ -526,53 +526,50 @@ const IMChatScreen = memo(props => {
 
 const onSendInput = async () => {
   if (!inputValue && !downloadObject) {
-    console.log('No message to be sent')
     return
   }
 
   let tempInputValue = inputValue
+
   if (!tempInputValue) {
     tempInputValue = formatMessage(downloadObject, localized)
   }
 
-  const newMessage = optimisticSetMessage(
+  // ✅ KLJUČNO: koristi pravi message object
+  const newMessage = getMessageObject(
     currentUser,
-    tempInputValue,
+    { content: tempInputValue },
     downloadObject,
     inReplyToItem,
+    false
   )
 
   richTextInputRef.current?.clear()
   setInputValue('')
   setInReplyToItem(null)
 
-  let currentChannelID = channel?.channelID || channel?.id
+  const currentChannelID = channel?.channelID || channel?.id
 
-  // 🔥 AKO CHANNEL NE POSTOJI → napravi ga
+  let targetChannel = channel
+
+  // ✅ ako channel ne postoji — kreiraj
   if (!currentChannelID) {
-    const newChannel = await createOne2OneChannel()
-    if (!newChannel) return
-
-    currentChannelID = newChannel?.channelID || newChannel?.id
+    targetChannel = await createOne2OneChannel()
+    if (!targetChannel) return
   }
 
-  // 🔥 OVO JE KLJUČNO — direktno snimanje u Firestore
-  try {
-    await firebase.firestore()
-      .collection('channels')
-      .doc(currentChannelID)
-      .collection('messages_live')
-      .add({
-        text: tempInputValue,
-        userID: currentUser.id,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      })
-  } catch (error) {
-    console.log('SEND ERROR:', error)
-  }
+  // ✅ OVO JE KLJUČ: koristi SDK sendMessage
+  const response = await sendMessageAPI(newMessage, targetChannel)
 
-  setLoading(false)
+  if (response?.error) {
+    alert(response.error)
+    setInputValue(tempInputValue)
+    setInReplyToItem(newMessage.inReplyToItem)
+  } else {
+    setDownloadObject(null)
+  }
 }
+
 
   const sendMessage = async (
     newMessage,

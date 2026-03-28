@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from 'react'
-import { View, Text, TouchableOpacity, Image } from 'react-native'
+import { View, Text, TouchableOpacity, Image, Alert } from 'react-native'
 import { useTheme, TouchableIcon } from '../../core/dopebase'
 import { timeFormat } from '../../core/helpers/timeFormat'
 import FeedMedia from './FeedMedia'
@@ -12,6 +12,10 @@ const FeedItem = memo(props => {
     onReaction,
     onCommentPress,
     onMediaPress,
+    onSharePost,
+    onDeletePost,
+    onUserReport,
+    user,
   } = props
 
   const { theme, appearance } = useTheme()
@@ -75,6 +79,12 @@ const FeedItem = memo(props => {
 
   const firstMedia = normalizedMedia[0]
 
+  const isOwner = useMemo(() => {
+    const currentUserID = user?.id || user?.userID
+    const authorID = item?.authorID || item?.author?.id || item?.author?.userID
+    return !!currentUserID && !!authorID && currentUserID === authorID
+  }, [user, item])
+
   const onHideReactions = useCallback(() => {
     setOtherReactionsVisible(false)
   }, [])
@@ -98,6 +108,57 @@ const FeedItem = memo(props => {
       onMediaPress?.(normalizedMedia, 0)
     }
   }, [normalizedMedia, onMediaPress])
+
+  const handleDeletePost = useCallback(() => {
+    onDeletePost?.(item)
+  }, [onDeletePost, item])
+
+  const handleReportPost = useCallback(() => {
+    onUserReport?.(item)
+  }, [onUserReport, item])
+
+  const handleSharePost = useCallback(() => {
+    onSharePost?.(item)
+  }, [onSharePost, item])
+
+  const handleMorePress = useCallback(() => {
+    if (isOwner) {
+      Alert.alert('Post options', '', [
+        ...(onSharePost
+          ? [{ text: 'Share', onPress: handleSharePost }]
+          : []),
+        ...(onDeletePost
+          ? [
+              {
+                text: 'Delete post',
+                style: 'destructive',
+                onPress: handleDeletePost,
+              },
+            ]
+          : []),
+        { text: 'Cancel', style: 'cancel' },
+      ])
+      return
+    }
+
+    Alert.alert('Post options', '', [
+      ...(onSharePost
+        ? [{ text: 'Share', onPress: handleSharePost }]
+        : []),
+      ...(onUserReport
+        ? [{ text: 'Report post', style: 'destructive', onPress: handleReportPost }]
+        : []),
+      { text: 'Cancel', style: 'cancel' },
+    ])
+  }, [
+    isOwner,
+    onSharePost,
+    onDeletePost,
+    onUserReport,
+    handleSharePost,
+    handleDeletePost,
+    handleReportPost,
+  ])
 
   const renderReactionIcon = (iconSource, reaction, index) => (
     <TouchableIcon
@@ -169,7 +230,7 @@ const FeedItem = memo(props => {
         </View>
 
         <TouchableIcon
-          onPress={() => {}}
+          onPress={handleMorePress}
           imageStyle={styles.moreIcon}
           containerStyle={[
             styles.moreIconContainer,
@@ -212,12 +273,20 @@ const FeedItem = memo(props => {
         <View style={styles.reactionIconsContainer}>
           <TouchableIcon
             containerStyle={styles.footerIconContainer}
-            iconSource={item?.myReaction ? theme.icons.like : theme.icons.thumbsupUnfilled}
-            imageStyle={item?.myReaction ? styles.inlineActionIcon : styles.inlineActionIconDefault}
+            iconSource={
+              item?.myReaction ? theme.icons.like : theme.icons.thumbsupUnfilled
+            }
+            imageStyle={
+              item?.myReaction
+                ? styles.inlineActionIcon
+                : styles.inlineActionIconDefault
+            }
             renderTitle={true}
             title={item?.reactionsCount > 0 ? item.reactionsCount : ' '}
             onPress={handleLikePress}
-            onLongPress={() => setOtherReactionsVisible(!otherReactionsVisible)}
+            onLongPress={() =>
+              setOtherReactionsVisible(!otherReactionsVisible)
+            }
           />
         </View>
 

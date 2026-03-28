@@ -39,8 +39,8 @@ android {
         applicationId "eu.greenguardapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 81
-        versionName "1.4.1"
+        versionCode 85
+        versionName "1.4.5"
 
         vectorDrawables.useSupportLibrary = true
 
