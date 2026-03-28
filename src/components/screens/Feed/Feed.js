@@ -8,7 +8,6 @@ import {
 import FeedItem from '../../FeedItem/FeedItem'
 import IMCameraModal from '../../../core/camera/IMCameraModal'
 import FullStories from '../../../core/stories/FullStories'
-// import { IMNativeFBAdComponentView } from '../../../core/ads/facebook'
 import { useConfig } from '../../../config'
 import dynamicStyles from './styles'
 
@@ -63,9 +62,6 @@ const Feed = memo(props => {
 
   const onImagePost = source => {
     onPostStory(source)
-
-    // fullStoryRef.current.postStory(story);
-    // console.log(source);
   }
 
   const getItemLayout = (data, index) => ({
@@ -92,11 +88,7 @@ const Feed = memo(props => {
     if (item.shouldUpdate) {
       shouldUpdate = item.shouldUpdate
     }
-    // if (item.isAd) {
-    //   return (
-    //     <IMNativeFBAdComponentView key={index + 'ad'} adsManager={adsManager} />
-    //   )
-    // }
+
     return (
       <FeedItem
         key={`${item.id || index}-feeditem`}
@@ -105,7 +97,7 @@ const Feed = memo(props => {
         isLastItem={isLastItem}
         feedIndex={index}
         onCommentPress={onCommentPress}
-        onMediaPress={() => {}}
+        onMediaPress={onMediaPress}
         shouldReSizeMedia={shouldReSizeMedia}
         onReaction={onReaction}
         onLikeReaction={onLikeReaction}
@@ -122,12 +114,7 @@ const Feed = memo(props => {
         onTextFieldUserPress={onTextFieldUserPress}
         onTextFieldHashTagPress={onTextFieldHashTagPress}
         onLayout={event => {
-          if (
-            event &&
-            event.nativeEvent &&
-            mediaLayouts &&
-            mediaLayouts.current
-          ) {
+          if (event && event.nativeEvent && mediaLayouts && mediaLayouts.current) {
             const layout = event.nativeEvent.layout
             mediaLayouts.current[index] = layout.x
           }
@@ -179,7 +166,7 @@ const Feed = memo(props => {
   return (
     <View style={styles.feedContainer}>
       <FlatList
-       keyExtractor={(item, index) => `${item.id || index}-post`} 
+        keyExtractor={(item, index) => `${item.id || index}-post`}
         scrollEventThrottle={16}
         onScroll={onFeedScroll}
         showsVerticalScrollIndicator={false}
@@ -210,7 +197,6 @@ const Feed = memo(props => {
       />
     </View>
   )
-  // }
 })
 
 export default Feed

@@ -4,41 +4,51 @@ const functions = require('firebase-functions')
 
 const notificationsRef = db.collection('notifications')
 
-const collectionsUtils = require('../core/collections')
-const { getList, getDoc } = collectionsUtils
-
 exports.listNotifications = functions.https.onCall(async (data, context) => {
-  const { userID, page, size } = data
-  console.log(`Fetching Notifcations for ${JSON.stringify(data)} `)
+  try {
+    const { userID } = data || {}
 
-  const notifications = await getList(
-    notificationsRef.doc(userID),
-    'notifications',
-    page,
-    size,
-    true,
-  )
-  if (notifications?.length > 0) {
-    console.log(`fetched notifications: `)
-    console.log(notifications)
+    if (!userID) {
+      return { notifications: [], success: true }
+    }
+
+    const snapshot = await notificationsRef
+      .where('toUserID', '==', userID)
+      .orderBy('createdAt', 'desc')
+      .limit(100)
+      .get()
+
+    const notifications =
+      snapshot?.docs?.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) ?? []
+
     return { notifications, success: true }
-  } else {
-    return { notifications: [], success: true }
+  } catch (error) {
+    console.log('listNotifications error:', error)
+    return { notifications: [], success: false }
   }
 })
 
 exports.updateNotification = functions.https.onCall(async (data, context) => {
-  const { notificationID, userID } = data
-  console.log(`Updating notifcation ${JSON.stringify(data)} `)
-  if (notificationID) {
-    const doc = await getDoc(
-      notificationsRef.doc(userID),
-      'notifications',
-      notificationID,
-    )
-    console.log(doc)
-    if (doc?.ref) {
-      doc.ref.set({ seen: true }, { merge: true })
+  try {
+    const { notificationID } = data || {}
+
+    if (!notificationID) {
+      return { success: false }
     }
+
+    await notificationsRef.doc(notificationID).set(
+      {
+        seen: true,
+      },
+      { merge: true },
+    )
+
+    return { success: true }
+  } catch (error) {
+    console.log('updateNotification error:', error)
+    return { success: false }
   }
 })

@@ -17,27 +17,31 @@ const sendPushNotification = async (
     console.log(`sendPushNotification ${toUserID} ${titleStr} ${contentStr}`)
 
     const toUser = await fetchUser(toUserID)
-    const { pushToken } = toUser
+
+    // ✅ prvo uvijek spremi notification u bazu
+    await saveNotificationsToDB(toUser, titleStr, contentStr, type, metadata)
+
+    const { pushToken } = toUser || {}
     console.log(`pushToken: ${pushToken}`)
+
+    // ✅ ako nema push tokena, notification ipak ostaje u app-u
     if (!pushToken) {
       return null
     }
 
     let fcmToken = toUser?.fcmToken
     if (!fcmToken || fcmToken.length === 0) {
-      // We have a push token, but not a fcm token, so we need to convert the push token to a fcm token
       fcmToken = await retrieveFCMTokenForPushToken(pushToken)
       console.log(`Retrieved fcmToken: ${fcmToken}`)
+
       if (fcmToken?.length > 0) {
         await updateUser(toUserID, { fcmToken })
       }
     }
 
-    await saveNotificationsToDB(toUser, titleStr, contentStr, type, metadata)
-
-    console.log(
-      `Actually sending push notification to ${toUserID} with title ${titleStr} with content ${contentStr}`,
-    )
+    if (!fcmToken) {
+      return null
+    }
 
     const userBadgeCount = await handleUserBadgeCount(toUser)
     console.log(`userBadgeCount: ${userBadgeCount}`)
@@ -60,8 +64,8 @@ const sendPushNotification = async (
     }
 
     return admin.messaging().send(data.message)
-  } catch {
-    console.log('Error in sendPushNotification')
+  } catch (e) {
+    console.log('Error in sendPushNotification', e)
     return null
   }
 }
@@ -81,37 +85,23 @@ const saveNotificationsToDB = async (toUser, title, body, type, metadata) => {
     toUser,
     type,
     seen: false,
+    createdAt: Math.floor(Date.now() / 1000),
   }
 
-  const ref = await notificationsRef.add({
-    ...notification,
-    createdAt: Math.floor(new Date().getTime() / 1000),
-  })
-  notificationsRef.doc(ref.id).update({ id: ref.id })
-}
-
-const getCircularReplacer = () => {
-  const seen = new WeakSet()
-  return (key, value) => {
-    if (typeof value === 'object' && value !== null) {
-      if (seen.has(value)) {
-        return
-      }
-      seen.add(value)
-    }
-    return value
-  }
+  const ref = await notificationsRef.add(notification)
+  await notificationsRef.doc(ref.id).update({ id: ref.id })
 }
 
 const retrieveFCMTokenForPushToken = async pushToken => {
   const url = 'https://iid.googleapis.com/iid/v1:batchImport'
-  let config = {
+  const config = {
     headers: {
       Authorization:
         'key=AAAABVjck0Q:APA91bGWI2gEQ-b6i5dGtIgYPl0da2rM10kkfPn1KBPJns9AS_oIM3iq0p1VmYSNeMaIXvs4kevHiHEzs-EpZ05Hs-6RQif5kK2g9uvtHxd9vwcZFw_9Ny125_n09xm52h73sR1GzwUv',
       'Content-Type': 'application/json',
     },
   }
+
   try {
     const res = await axios.post(
       url,
@@ -122,15 +112,13 @@ const retrieveFCMTokenForPushToken = async pushToken => {
       },
       config,
     )
-    // console.log(
-    //   `res for FCM exchange:: ${JSON.stringify(res, getCircularReplacer())}`,
-    // )
+
     console.log(res.data.results)
-    return res.data.results[0].registration_token
+    return res?.data?.results?.[0]?.registration_token || null
   } catch (e) {
     console.log(`Error in FCM exchange:: ${e}`)
+    return null
   }
-  return null
 }
 
 exports.sendPushNotification = sendPushNotification
