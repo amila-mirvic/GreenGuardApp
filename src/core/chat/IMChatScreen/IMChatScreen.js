@@ -8,7 +8,7 @@ import React, {
   memo,
 } from 'react'
 import { useDispatch } from 'react-redux'
-import { View, Text, Dimensions, Platform } from 'react-native'
+import { View, Dimensions, Platform } from 'react-native'
 import {
   useTheme,
   useTranslations,
@@ -73,7 +73,6 @@ const IMChatScreen = memo(props => {
   )
 
   const { showActionSheetWithOptions } = useActionSheet()
-
   const { markAbuse } = useUserReportingMutations()
   const subscribeMessagesRef = useRef(null)
 
@@ -181,8 +180,29 @@ const IMChatScreen = memo(props => {
     }
   }, [downloadObject])
 
+  const normalizeInputToString = value => {
+    if (typeof value === 'string') {
+      return value.trim()
+    }
+
+    if (value && typeof value === 'object') {
+      if (typeof value.content === 'string') {
+        return value.content.trim()
+      }
+      if (typeof value.text === 'string') {
+        return value.text.trim()
+      }
+      if (typeof value.displayText === 'string') {
+        return value.displayText.trim()
+      }
+    }
+
+    return ''
+  }
+
   const onListEndReached = useCallback(() => {
-    const channelID = route?.params?.channel?.id || route?.params?.channel?.channelID
+    const channelID =
+      route?.params?.channel?.id || route?.params?.channel?.channelID
     loadMoreMessages(channelID)
   }, [loadMoreMessages, route?.params?.channel])
 
@@ -434,12 +454,9 @@ const IMChatScreen = memo(props => {
     }
   }
 
-  const onChangeTextInput = useCallback(
-    text => {
-      setInputValue(text)
-    },
-    [setInputValue],
-  )
+  const onChangeTextInput = useCallback(text => {
+    setInputValue(text)
+  }, [])
 
   const createOne2OneChannel = async () => {
     const response = await createChannel(
@@ -449,7 +466,8 @@ const IMChatScreen = memo(props => {
 
     if (response) {
       const newHydratedChannel = channelWithHydratedOtherParticipants(response)
-      const newChannelID = newHydratedChannel?.channelID || newHydratedChannel?.id
+      const newChannelID =
+        newHydratedChannel?.channelID || newHydratedChannel?.id
 
       setChannel(newHydratedChannel)
 
@@ -462,57 +480,68 @@ const IMChatScreen = memo(props => {
     return null
   }
 
-const onSendInput = async () => {
-  if (!inputValue && !downloadObject) {
-    return
-  }
+  const onSendInput = async () => {
+    const textValue = normalizeInputToString(inputValue)
 
-  let tempInputValue = inputValue
-
-  if (!tempInputValue) {
-    tempInputValue = formatMessage(downloadObject, localized)
-  }
-
-  // 🔥 FIX: garantujemo ID i createdAt
-  const safeMessage = {
-    id: `${currentUser.id}_${Date.now()}`, // UNIQUE ID
-    content: tempInputValue,
-    createdAt: Math.floor(Date.now() / 1000),
-    senderID: currentUser.id,
-  }
-
-  const newMessage = optimisticSetMessage(
-    currentUser,
-    safeMessage,
-    downloadObject,
-    inReplyToItem,
-  )
-
-  richTextInputRef.current?.clear()
-  setInputValue('')
-  setInReplyToItem(null)
-
-  let targetChannel = channel
-  const currentChannelID = channel?.channelID || channel?.id
-
-  if (!currentChannelID) {
-    targetChannel = await createOne2OneChannel()
-    if (!targetChannel) return
-  }
-
-  try {
-    const response = await sendMessageAPI(newMessage, targetChannel)
-
-    if (response?.error) {
-      throw new Error(response.error)
+    if (!textValue && !downloadObject) {
+      return
     }
 
-    setDownloadObject(null)
-  } catch (err) {
-    console.log('SEND MESSAGE CRASH:', err)
-    alert('Message failed to send')
+    let finalContent = textValue
+
+    if (!finalContent && downloadObject) {
+      finalContent = formatMessage(downloadObject, localized)
+    }
+
+    if (!finalContent && !downloadObject) {
+      return
+    }
+
+    let targetChannel = channel
+    const currentChannelID = channel?.channelID || channel?.id
+
+    if (!currentChannelID) {
+      targetChannel = await createOne2OneChannel()
+      if (!targetChannel) {
+        return
+      }
+    }
+
+    const safePayload = {
+      id: `${currentUser.id}_${Date.now()}`,
+      content: finalContent || '',
+      createdAt: Math.floor(Date.now() / 1000),
+      senderID: currentUser.id,
+    }
+
+    const newMessage = optimisticSetMessage(
+      currentUser,
+      safePayload,
+      downloadObject,
+      inReplyToItem,
+    )
+
+    richTextInputRef.current?.clear()
+    setInputValue('')
+    setInReplyToItem(null)
+
+    try {
+      const response = await sendMessageAPI(newMessage, targetChannel)
+
+      if (response?.error) {
+        throw new Error(
+          typeof response.error === 'string'
+            ? response.error
+            : response.error?.message || 'Message failed to send',
+        )
+      }
+
+      setDownloadObject(null)
+    } catch (err) {
+      console.log('SEND MESSAGE ERROR:', err)
+      Alert.alert(localized('Error'), localized('Message failed to send'))
+    }
   }
-}
 
   const onPhotoUploadDialogDone = useCallback(
     index => {
@@ -556,7 +585,7 @@ const onSendInput = async () => {
           startUpload(result.assets[0])
         }
       })
-      .catch(function (error) {
+      .catch(error => {
         console.log(error)
       })
   }, [startUpload])
@@ -574,7 +603,7 @@ const onSendInput = async () => {
           startUpload({ type: (match ?? [])[0], ...image })
         }
       })
-      .catch(function (error) {
+      .catch(error => {
         console.log('this the error', error)
       })
   }, [startUpload])
@@ -600,11 +629,14 @@ const onSendInput = async () => {
     if (!type) {
       console.log("Can't upload file without type")
       console.log(uploadData)
-      alert(
+      Alert.alert(
+        localized('Error'),
         localized(
-          `Can\'t upload file without a media type. Please report this error with the full error logs`,
+          "Can't upload file without a media type. Please report this error with the full error logs",
         ),
       )
+      setLoading(false)
+      return
     }
     const { downloadURL, thumbnailURL } =
       await storageAPI.processAndUploadMediaFile(uploadData)
@@ -647,31 +679,15 @@ const onSendInput = async () => {
 
   const onChatMediaPress = useCallback(
     item => {
-      const index = images?.findIndex(image => {
-        return image.id === item.id
-      })
+      const index = images?.findIndex(image => image.id === item.id)
       setSelectedMediaIndex(index)
     },
-    [images, setSelectedMediaIndex],
+    [images],
   )
 
   const onMediaClose = useCallback(() => {
     setSelectedMediaIndex(-1)
-  }, [setSelectedMediaIndex])
-
-  const onUserBlockPress = useCallback(
-    passedChannel => {
-      reportAbuse(passedChannel, 'block')
-    },
-    [currentUser?.id, reportAbuse],
-  )
-
-  const onUserReportPress = useCallback(
-    passedChannel => {
-      reportAbuse(passedChannel, 'report')
-    },
-    [currentUser?.id, reportAbuse],
-  )
+  }, [])
 
   const reportAbuse = async (passedChannel, type) => {
     setLoading(true)
@@ -688,16 +704,27 @@ const onSendInput = async () => {
     }
   }
 
-  const onReplyActionPress = useCallback(
-    replyItem => {
-      setInReplyToItem(replyItem)
+  const onUserBlockPress = useCallback(
+    passedChannel => {
+      reportAbuse(passedChannel, 'block')
     },
-    [setInReplyToItem],
+    [currentUser?.id],
   )
+
+  const onUserReportPress = useCallback(
+    passedChannel => {
+      reportAbuse(passedChannel, 'report')
+    },
+    [currentUser?.id],
+  )
+
+  const onReplyActionPress = useCallback(replyItem => {
+    setInReplyToItem(replyItem)
+  }, [])
 
   const onReplyingToDismiss = useCallback(() => {
     setInReplyToItem(null)
-  }, [setInReplyToItem])
+  }, [])
 
   const onDeleteThreadItem = useCallback(
     message => {
@@ -728,53 +755,61 @@ const onSendInput = async () => {
 
   const onReaction = useCallback(
     async (reaction, message) => {
-      await addReaction(message, currentUser, reaction, channel?.id || channel?.channelID)
+      await addReaction(
+        message,
+        currentUser,
+        reaction,
+        channel?.id || channel?.channelID,
+      )
     },
     [addReaction, channel, currentUser],
   )
 
-  const onForwardMessageActionPress = useCallback(async (targetChannel, message) => {
-    let tempInputValue = { content: message.content }
-    if (!tempInputValue) {
-      tempInputValue = formatMessage(downloadObject, localized)
-    }
-    let hydrateChannel = channelWithHydratedOtherParticipants(targetChannel)
+  const onForwardMessageActionPress = useCallback(
+    async (targetChannel, message) => {
+      const messageText =
+        typeof message?.content === 'string' ? message.content : ''
+      const tempInputValue = { content: messageText }
 
-    const newMessage = getMessageObject(
-      currentUser,
-      tempInputValue,
-      message?.media,
-      null,
-      true,
-    )
+      let hydrateChannel = channelWithHydratedOtherParticipants(targetChannel)
 
-    if (hydrateChannel?.title || hydrateChannel?.channelID || hydrateChannel?.id) {
-      const response = await sendMessageAPI(newMessage, hydrateChannel)
-      if (response?.error) {
-        alert(response.error)
-        return false
+      const newMessage = getMessageObject(
+        currentUser,
+        tempInputValue,
+        message?.media,
+        null,
+        true,
+      )
+
+      if (hydrateChannel?.title || hydrateChannel?.channelID || hydrateChannel?.id) {
+        const response = await sendMessageAPI(newMessage, hydrateChannel)
+        if (response?.error) {
+          Alert.alert(localized('Error'), localized('Message failed to send'))
+          return false
+        }
+        setInReplyToItem(null)
+        return true
+      }
+
+      const newChannel = await createChannel(
+        currentUser,
+        channelWithHydratedOtherParticipants(targetChannel)?.otherParticipants,
+      )
+
+      if (newChannel) {
+        const response = await sendMessageAPI(newMessage, newChannel)
+        if (response?.error) {
+          Alert.alert(localized('Error'), localized('Message failed to send'))
+          return false
+        }
+        setInReplyToItem(null)
+        return true
       }
       setInReplyToItem(null)
-      return true
-    }
-
-    const newChannel = await createChannel(
-      currentUser,
-      channelWithHydratedOtherParticipants(targetChannel)?.otherParticipants,
-    )
-
-    if (newChannel) {
-      const response = await sendMessageAPI(newMessage, newChannel)
-      if (response?.error) {
-        alert(response.error)
-        return false
-      }
-      setInReplyToItem(null)
-      return true
-    }
-    setInReplyToItem(null)
-    return false
-  }, [channel, createChannel, currentUser, downloadObject, getMessageObject, localized, sendMessageAPI])
+      return false
+    },
+    [channel, createChannel, currentUser, getMessageObject, localized, sendMessageAPI],
+  )
 
   return (
     <IMChat

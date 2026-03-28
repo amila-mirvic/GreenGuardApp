@@ -1,8 +1,5 @@
 import { useRef, useState } from 'react'
-import {
-  subscribeToComments as subscribeToCommentsAPI,
-  listComments as listCommentsAPI,
-} from './firebaseFeedClient'
+import { subscribeToComments as subscribeToCommentsAPI } from './firebaseFeedClient'
 
 const batchSize = 25
 
@@ -19,18 +16,27 @@ const normalizeCreatedAt = value => {
   return 0
 }
 
+const normalizeComment = comment => {
+  if (!comment) return null
+
+  return {
+    ...comment,
+    id: comment?.id || `${comment?.authorID || 'comment'}_${normalizeCreatedAt(comment?.createdAt)}`,
+    commentText: comment?.commentText || comment?.text || '',
+    text: comment?.text || comment?.commentText || '',
+  }
+}
+
 export const useComments = () => {
-  const [comments, setComments] = useState(null)
+  const [comments, setComments] = useState([])
   const [commentsLoading, setCommentsLoading] = useState(false)
   const pagination = useRef({ page: 0, size: batchSize, exhausted: false })
 
-  const deduplicatedComments = (oldComments, newComments, appendToBottom) => {
+  const deduplicatedComments = (oldComments, newComments) => {
     const oldList = Array.isArray(oldComments) ? oldComments.filter(Boolean) : []
     const newList = Array.isArray(newComments) ? newComments.filter(Boolean) : []
 
-    const all = appendToBottom
-      ? [...oldList, ...newList]
-      : [...newList, ...oldList]
+    const all = [...newList, ...oldList].map(normalizeComment).filter(Boolean)
 
     const merged = all.reduce((acc, curr) => {
       const currId = curr?.id
@@ -48,38 +54,14 @@ export const useComments = () => {
     )
   }
 
-  const loadMoreComments = async postID => {
-    if (!postID || pagination.current.exhausted) {
-      return
-    }
-
-    try {
-      const newComments = await listCommentsAPI(
-        postID,
-        pagination.current.page,
-        pagination.current.size,
-      )
-
-      const safeComments = Array.isArray(newComments) ? newComments : []
-
-      if (safeComments.length === 0) {
-        pagination.current.exhausted = true
-        return
-      }
-
-      pagination.current.page += 1
-
-      setComments(oldComments =>
-        deduplicatedComments(oldComments, safeComments, true),
-      )
-    } catch (error) {
-      console.log('loadMoreComments error:', error)
-    }
+  const loadMoreComments = async () => {
+    return
   }
 
   const subscribeToComments = postID => {
     if (!postID) {
       setComments([])
+      setCommentsLoading(false)
       return () => {}
     }
 
@@ -87,34 +69,28 @@ export const useComments = () => {
     setComments([])
     setCommentsLoading(true)
 
-    listCommentsAPI(postID, 0, batchSize)
-      .then(initialComments => {
-        const safeComments = Array.isArray(initialComments) ? initialComments : []
+    let firstSnapshotResolved = false
 
-        if (safeComments.length < batchSize) {
-          pagination.current.exhausted = true
-        } else {
-          pagination.current.page = 1
-        }
-
-        setComments(oldComments =>
-          deduplicatedComments(oldComments, safeComments, true),
-        )
-      })
-      .catch(error => {
-        console.log('initial comments fetch error:', error)
-      })
-      .finally(() => {
-        setCommentsLoading(false)
-      })
-
-    return subscribeToCommentsAPI(postID, newComments => {
+    const unsubscribe = subscribeToCommentsAPI(postID, newComments => {
       const safeComments = Array.isArray(newComments) ? newComments : []
-      setCommentsLoading(false)
-      setComments(oldComments =>
-        deduplicatedComments(oldComments, safeComments, false),
-      )
+
+      if (!firstSnapshotResolved) {
+        firstSnapshotResolved = true
+        setCommentsLoading(false)
+      }
+
+      setComments(oldComments => deduplicatedComments(oldComments, safeComments))
     })
+
+    setTimeout(() => {
+      if (!firstSnapshotResolved) {
+        setCommentsLoading(false)
+      }
+    }, 2500)
+
+    return () => {
+      unsubscribe && unsubscribe()
+    }
   }
 
   return {

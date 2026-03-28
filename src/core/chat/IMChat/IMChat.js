@@ -1,5 +1,6 @@
 import React, { useState, useCallback, memo } from 'react'
 import { Platform, Text, TouchableOpacity, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   useTheme,
   useTranslations,
@@ -62,6 +63,7 @@ const IMChat = memo(props => {
   const { theme, appearance } = useTheme()
   const styles = dynamicStyles(theme, appearance)
   const { markUserAsTypingInChannel } = useChatChannels()
+  const insets = useSafeAreaInsets()
 
   const [channel] = useState({})
   const [temporaryInReplyToItem, setTemporaryInReplyToItem] = useState(null)
@@ -75,24 +77,13 @@ const IMChat = memo(props => {
   const FORWARD = localized('Forward')
   const DELETE = localized('Delete')
 
-  const mediaThreadItemSheetOptions = [
-    CANCEL,
-    FORWARD,
-  ]
-
-  const inBoundThreadItemSheetOptions = [
-    REPLY,
-    FORWARD,
-  ]
-  const outBoundThreadItemSheetOptions = [
-    REPLY,
-    FORWARD,
-    DELETE,
-  ]
+  const mediaThreadItemSheetOptions = [CANCEL, FORWARD]
+  const inBoundThreadItemSheetOptions = [REPLY, FORWARD]
+  const outBoundThreadItemSheetOptions = [REPLY, FORWARD, DELETE]
 
   const markUserAsTyping = inputValue => {
-    if (inputValue?.length > 0) {
-      markUserAsTypingInChannel(channelItem?.id, user.id)
+    if (inputValue?.length > 0 && channelItem?.id && user?.id) {
+      markUserAsTypingInChannel(channelItem.id, user.id)
     }
   }
 
@@ -102,6 +93,7 @@ const IMChat = memo(props => {
       onChangeTextInput({
         content: text,
         mentions,
+        displayText,
       })
       markUserAsTyping(displayText)
     },
@@ -127,23 +119,23 @@ const IMChat = memo(props => {
       if (isMedia) {
         setThreadItemActionSheet({
           options: mediaThreadItemSheetOptions,
-          reactionsPosition: reactionsPosition,
+          reactionsPosition,
         })
       } else if (user.id === threadItem?.senderID) {
         setThreadItemActionSheet({
           inBound: false,
           options: outBoundThreadItemSheetOptions,
-          reactionsPosition: reactionsPosition,
+          reactionsPosition,
         })
       } else {
         setThreadItemActionSheet({
           inBound: true,
           options: inBoundThreadItemSheetOptions,
-          reactionsPosition: reactionsPosition,
+          reactionsPosition,
         })
       }
     },
-    [setThreadItemActionSheet, setTemporaryInReplyToItem, user.id],
+    [user.id],
   )
 
   const onReplyPress = useCallback(
@@ -172,20 +164,18 @@ const IMChat = memo(props => {
       if (index === outBoundThreadItemSheetOptions.indexOf(REPLY)) {
         return onReplyPress(index)
       }
-
       if (index === outBoundThreadItemSheetOptions.indexOf(FORWARD)) {
         return setShowForwardMessageModal(true)
       }
-
       if (index === outBoundThreadItemSheetOptions.indexOf(DELETE)) {
         return onDeleteThreadItem && onDeleteThreadItem(temporaryInReplyToItem)
       }
     },
-    [onDeleteThreadItem, onReplyPress],
+    [onDeleteThreadItem, onReplyPress, temporaryInReplyToItem],
   )
 
   const handleMediaThreadItemActionSheet = useCallback(index => {
-    if (index === inBoundThreadItemSheetOptions.indexOf(FORWARD)) {
+    if (index === mediaThreadItemSheetOptions.indexOf(FORWARD)) {
       setShowForwardMessageModal(true)
     }
   }, [])
@@ -198,12 +188,16 @@ const IMChat = memo(props => {
         } else {
           handleOutBoundThreadItemActionSheet(index)
         }
-      }
-      else {
+      } else {
         handleMediaThreadItemActionSheet(index)
       }
     },
-    [threadItemActionSheet.inBound, handleInBoundThreadItemActionSheet],
+    [
+      threadItemActionSheet.inBound,
+      handleInBoundThreadItemActionSheet,
+      handleOutBoundThreadItemActionSheet,
+      handleMediaThreadItemActionSheet,
+    ],
   )
 
   const onForwardMessage = useCallback(
@@ -216,8 +210,6 @@ const IMChat = memo(props => {
   )
 
   const onReactionPress = async reaction => {
-    // this was a reaction on the reactions tray, coming after a long press + one tap
-
     setIsReactionsContainerVisible(false)
     onReaction(reaction, temporaryInReplyToItem)
   }
@@ -287,11 +279,16 @@ const IMChat = memo(props => {
     )
   }
 
-  const ContainerComponent = Platform.OS === 'ios' ? KeyboardAvoidingView : View
+  const keyboardVerticalOffset = Platform.OS === 'android' ? 0 : 0
+  const extraBottomInset = Math.max(insets.bottom || 0, Platform.OS === 'android' ? 12 : 0)
 
   return (
-    <ContainerComponent style={styles.personalChatContainer}>
-      <>
+    <KeyboardAvoidingView
+      style={[styles.personalChatContainer, { paddingBottom: extraBottomInset }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={keyboardVerticalOffset}
+    >
+      <View style={{ flex: 1 }}>
         <MessageThread
           messages={messages}
           user={user}
@@ -304,22 +301,25 @@ const IMChat = memo(props => {
         />
         {renderReactionsContainer()}
         {!isReactionsContainerVisible && (
-          <BottomInput
-            richTextInputRef={richTextInputRef}
-            onAudioRecordDone={onAudioRecordDone}
-            onChangeText={onChangeText}
-            onSend={onSend}
-            trackInteractive={true}
-            onAddMediaPress={onAddMediaPress}
-            onAddDocPress={onAddDocPress}
-            inReplyToItem={inReplyToItem}
-            onReplyingToDismiss={onReplyingToDismiss}
-            participants={channelItem?.participants}
-            onChatUserItemPress={onChatUserItemPress}
-          />
+          <View style={{ paddingBottom: extraBottomInset, backgroundColor: theme.colors[appearance].primaryBackground }}>
+            <BottomInput
+              richTextInputRef={richTextInputRef}
+              onAudioRecordDone={onAudioRecordDone}
+              onChangeText={onChangeText}
+              onSend={onSend}
+              trackInteractive={true}
+              onAddMediaPress={onAddMediaPress}
+              onAddDocPress={onAddDocPress}
+              inReplyToItem={inReplyToItem}
+              onReplyingToDismiss={onReplyingToDismiss}
+              participants={channelItem?.participants}
+              onChatUserItemPress={onChatUserItemPress}
+            />
+          </View>
         )}
         {isReactionsContainerVisible && renderThreadItemActionSheet()}
-      </>
+      </View>
+
       <DialogInput
         isDialogVisible={isRenameDialogVisible}
         title={localized('Change Name')}
@@ -343,7 +343,7 @@ const IMChat = memo(props => {
         onSend={onForwardMessage}
       />
       {(loading || messages == null) && <ActivityIndicator />}
-    </ContainerComponent>
+    </KeyboardAvoidingView>
   )
 })
 
