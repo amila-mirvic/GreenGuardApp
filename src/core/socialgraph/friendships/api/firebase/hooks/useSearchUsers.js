@@ -6,17 +6,10 @@ export const useSearchUsers = userID => {
   const pagination = useRef({ page: 0, size: 100 })
 
   const search = async keyword => {
-    const trimmedKeyword = (keyword || '').trim()
-
-    if (!trimmedKeyword.length) {
-      setUsers([])
-      return
-    }
-
     try {
       const fetchedUsers = await searchUsersAPI(
         userID,
-        trimmedKeyword,
+        keyword ?? '',
         pagination.current.page,
         pagination.current.size,
       )

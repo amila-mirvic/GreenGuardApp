@@ -3,6 +3,7 @@ import { FriendshipFunctions, DocRef } from './friendshipRef'
 
 const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
 const usersRef = firestore().collection('users')
+const socialGraphRef = firestore().collection('social_graph')
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
   let timeoutId
@@ -32,19 +33,35 @@ const normalizeSearchText = user => {
   return `${fullName} ${username} ${email}`.trim().toLowerCase()
 }
 
+const getExistingFriendshipIDs = async userID => {
+  try {
+    const snapshot = await socialGraphRef.doc(userID).collection('friendships').get()
+    const ids = snapshot?.docs?.map(doc => doc.id) ?? []
+    return new Set(ids)
+  } catch (error) {
+    console.log('getExistingFriendshipIDs error:', error)
+    return new Set()
+  }
+}
+
 const fallbackSearchUsers = async (userID, keyword, size = 1000) => {
   try {
     const snapshot = await usersRef.get()
     const users = snapshot?.docs?.map(doc => doc.data()) ?? []
+    const friendshipIDs = await getExistingFriendshipIDs(userID)
     const normalizedKeyword = (keyword || '').trim().toLowerCase()
-
-    if (!normalizedKeyword.length) {
-      return []
-    }
 
     const results = users.filter(user => {
       if (!user?.id || user.id === userID) {
         return false
+      }
+
+      if (friendshipIDs.has(user.id)) {
+        return false
+      }
+
+      if (!normalizedKeyword.length) {
+        return true
       }
 
       const haystack = normalizeSearchText(user)
@@ -140,10 +157,10 @@ export const fetchFriends = async (userID, page = 0, size = 1000) => {
       }),
     )
 
-    return res?.data?.friends
+    return res?.data?.friends ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
@@ -158,10 +175,10 @@ export const fetchFriendships = async (userID, page = 0, size = 1000) => {
       }),
     )
 
-    return res?.data?.friendships
+    return res?.data?.friendships ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
@@ -184,19 +201,15 @@ export const fetchOtherUserFriendships = async (
       }),
     )
 
-    return res?.data?.friendships
+    return res?.data?.friendships ?? []
   } catch (error) {
     console.log(error)
-    return null
+    return []
   }
 }
 
 export const searchUsers = async (userID, keyword, page = 0, size = 1000) => {
-  const trimmedKeyword = (keyword || '').trim()
-
-  if (!trimmedKeyword.length) {
-    return []
-  }
+  const normalizedKeyword = typeof keyword === 'string' ? keyword : ''
 
   const instance = FriendshipFunctions().searchUsers
 
@@ -204,7 +217,7 @@ export const searchUsers = async (userID, keyword, page = 0, size = 1000) => {
     const res = await withTimeout(
       instance({
         userID,
-        keyword: trimmedKeyword,
+        keyword: normalizedKeyword,
         page,
         size,
       }),
@@ -212,13 +225,22 @@ export const searchUsers = async (userID, keyword, page = 0, size = 1000) => {
 
     const users = res?.data?.users
 
-    if (Array.isArray(users) && users.length > 0) {
-      return users
+    if (Array.isArray(users)) {
+      if (normalizedKeyword.trim().length === 0) {
+        if (users.length > 0) {
+          return users
+        }
+        return await fallbackSearchUsers(userID, '', size)
+      }
+
+      if (users.length > 0) {
+        return users
+      }
     }
 
-    return await fallbackSearchUsers(userID, trimmedKeyword, size)
+    return await fallbackSearchUsers(userID, normalizedKeyword, size)
   } catch (error) {
     console.log(error)
-    return await fallbackSearchUsers(userID, trimmedKeyword, size)
+    return await fallbackSearchUsers(userID, normalizedKeyword, size)
   }
 }

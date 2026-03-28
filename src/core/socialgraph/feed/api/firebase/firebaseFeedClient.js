@@ -175,9 +175,16 @@ export const addComment = async (commentText, postID, authorID) => {
   }
 }
 
+// ✅ bitno: čitamo canonical comments subcollection, ne comments_live
 export const subscribeToComments = (postID, callback) => {
-  return DocRef(postID)
-    .commentsLive
+  if (!postID) {
+    callback && callback([])
+    return () => {}
+  }
+
+  return postsRef
+    .doc(postID)
+    .collection('comments')
     .orderBy('createdAt', 'desc')
     .onSnapshot(
       { includeMetadataChanges: true },
@@ -185,7 +192,7 @@ export const subscribeToComments = (postID, callback) => {
         callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
       },
       error => {
-        console.log(error)
+        console.log('subscribeToComments error:', error)
         callback && callback([])
       },
     )
@@ -194,11 +201,13 @@ export const subscribeToComments = (postID, callback) => {
 export const listComments = async (postID, page = 0, size = 1000) => {
   const instance = FeedFunctions().listComments
   try {
-    const res = await instance({
-      postID,
-      page,
-      size,
-    })
+    const res = await withTimeout(
+      instance({
+        postID,
+        page,
+        size,
+      }),
+    )
 
     return res?.data?.comments ?? []
   } catch (error) {
@@ -295,7 +304,6 @@ export const subscribeToProfileFeedPosts = (userID, callback) => {
     )
 }
 
-// ✅ canonical fallback without orderBy in Firestore query
 export const listCanonicalPostsByAuthor = async (
   userID,
   page = 0,

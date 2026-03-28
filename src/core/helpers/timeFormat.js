@@ -25,8 +25,11 @@ function normalizeToDate(input) {
     if (!Number.isNaN(asNumber)) {
       return normalizeToDate(asNumber)
     }
+
     const d = new Date(input)
-    return Number.isNaN(d.getTime()) ? null : d
+    if (!Number.isNaN(d.getTime())) {
+      return d
+    }
   }
 
   return null

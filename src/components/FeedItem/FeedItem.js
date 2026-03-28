@@ -25,7 +25,7 @@ const FeedItem = memo(props => {
   }, [])
 
   const onMorePress = useCallback(() => {
-    // ostavljeno prazno da ne ruši build
+    // intentionally empty
   }, [])
 
   const handleAuthorPress = useCallback(() => {
@@ -155,7 +155,9 @@ const FeedItem = memo(props => {
 
           <View style={styles.mainSubtitleContainer}>
             <View style={styles.subtitleContainer}>
-              <Text style={styles.subtitle}>{timeFormat(item?.createdAt)}</Text>
+              <Text style={styles.subtitle}>
+                {timeFormat(item?.createdAt)}
+              </Text>
             </View>
           </View>
         </View>
