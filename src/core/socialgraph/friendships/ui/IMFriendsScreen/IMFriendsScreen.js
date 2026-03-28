@@ -1,11 +1,5 @@
-import React, {
-  useRef,
-  useState,
-  useEffect,
-  useLayoutEffect,
-  useCallback,
-} from 'react'
-import { useTheme, useTranslations, TouchableIcon } from '../../../../dopebase'
+import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useTheme, useTranslations } from '../../../../dopebase'
 import { FriendshipConstants } from '../../constants'
 import IMFriendsListComponent from '../../ui/IMFriendsListComponent/IMFriendsListComponent'
 import { useSocialGraphFriendships, useSocialGraphMutations } from '../../api'
@@ -25,6 +19,7 @@ const IMFriendsScreen = props => {
     pullToRefresh,
     batchSize,
   } = useSocialGraphFriendships()
+
   const { addEdge, unfriend } = useSocialGraphMutations(setFriendships)
 
   const { navigation, route } = props
@@ -33,7 +28,6 @@ const IMFriendsScreen = props => {
   const [isLoading, setIsLoading] = useState(false)
 
   useLayoutEffect(() => {
-    const showDrawerMenuButton = route.params.showDrawerMenuButton
     const headerTitle = route.params.friendsScreenTitle || localized('Friends')
     const colorSet = theme.colors[appearance]
     navigation.setOptions({
@@ -46,21 +40,23 @@ const IMFriendsScreen = props => {
   }, [])
 
   useEffect(() => {
+    if (!currentUser?.id) {
+      return
+    }
+
     const unsubscribe = subscribeToFriendships(currentUser?.id)
+    pullToRefresh(currentUser?.id)
+
     return () => {
       unsubscribe && unsubscribe()
     }
   }, [currentUser?.id])
 
   const onFriendshipsListEndReached = useCallback(() => {
-    if (friendships?.length >= batchSize) {
+    if ((friendships?.length || 0) >= batchSize) {
       loadMoreFriendships(currentUser?.id)
     }
-  }, [loadMoreFriendships, currentUser?.id, friendships?.length])
-
-  const openDrawer = () => {
-    navigation.openDrawer()
-  }
+  }, [loadMoreFriendships, currentUser?.id, friendships?.length, batchSize])
 
   const onSearchButtonPress = useCallback(async () => {
     navigation.navigate('UserSearchScreen', {
@@ -68,50 +64,50 @@ const IMFriendsScreen = props => {
     })
   }, [followEnabled, navigation])
 
+  const onUnfriend = async item => {
+    await unfriend(currentUser, item.user)
+  }
+
+  const onAddFriend = async item => {
+    setIsLoading(true)
+    await addEdge(currentUser, item.user)
+    await pullToRefresh(currentUser?.id)
+    setIsLoading(false)
+  }
+
+  const onCancel = async item => {
+    await unfriend(currentUser, item.user)
+  }
+
+  const onAccept = async item => {
+    setIsLoading(true)
+    await addEdge(currentUser, item.user)
+    await pullToRefresh(currentUser?.id)
+    setIsLoading(false)
+  }
+
   const onFriendAction = useCallback(
-    (item, index) => {
+    item => {
       if (isLoading || (item.user && item.user.id == currentUser.id)) {
         return
       }
       switch (item.type) {
         case FriendshipConstants.FriendshipType.none:
-          onAddFriend(item, index)
+          onAddFriend(item)
           break
         case FriendshipConstants.FriendshipType.reciprocal:
-          onUnfriend(item, index)
+          onUnfriend(item)
           break
         case FriendshipConstants.FriendshipType.inbound:
-          onAccept(item, index)
+          onAccept(item)
           break
         case FriendshipConstants.FriendshipType.outbound:
-          onCancel(item, index)
+          onCancel(item)
           break
       }
     },
-    [onAddFriend, onUnfriend, onAccept, onCancel, isLoading, currentUser],
+    [isLoading, currentUser, onAddFriend, onUnfriend, onAccept, onCancel],
   )
-
-  const onUnfriend = async (item, index) => {
-    await unfriend(currentUser, item.user)
-  }
-
-  const onAddFriend = async (item, index) => {
-    setIsLoading(true)
-    await addEdge(currentUser, item.user)
-    await pullToRefresh(currentUser?.id)
-    setIsLoading(false)
-  }
-
-  const onCancel = async (item, index) => {
-    await unfriend(currentUser, item.user)
-  }
-
-  const onAccept = async (item, index) => {
-    setIsLoading(true)
-    await addEdge(currentUser, item.user)
-    await pullToRefresh(currentUser?.id)
-    setIsLoading(false)
-  }
 
   const onFriendItemPress = useCallback(
     friendship => {
@@ -123,7 +119,7 @@ const IMFriendsScreen = props => {
         lastScreenTitle: 'Friends',
       })
     },
-    [navigation],
+    [navigation, currentUser?.id],
   )
 
   const onEmptyStatePress = useCallback(() => {

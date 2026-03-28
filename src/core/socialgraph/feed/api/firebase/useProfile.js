@@ -18,6 +18,7 @@ export const useProfile = (profileID, viewerID) => {
 
   const { handleFeedReaction } = useReactions(setPosts)
 
+  const realtimePostsRef = useRef([])
   const pagination = useRef({ page: 0, size: batchSize, exhausted: false })
 
   const locallyDeletedPosts = useSelector(
@@ -26,8 +27,7 @@ export const useProfile = (profileID, viewerID) => {
 
   useEffect(() => {
     if (posts?.length && locallyDeletedPosts?.length) {
-      const filteredDeletedPosts = removeLocallyDeletedPosts(posts)
-      setPosts(filteredDeletedPosts)
+      setPosts(prev => removeLocallyDeletedPosts(prev || []))
     }
   }, [JSON.stringify(locallyDeletedPosts)])
 
@@ -62,6 +62,20 @@ export const useProfile = (profileID, viewerID) => {
     }, [])
   }
 
+  const subscribeToProfileFeedPosts = userID => {
+    return subscribeToProfileFeedPostsAPI(userID, livePosts => {
+      const filteredLive = removeLocallyDeletedPosts(livePosts || [])
+      realtimePostsRef.current = filteredLive
+
+      setPosts(oldPosts =>
+        hydratePostsWithMyReactions(
+          deduplicatedPosts(oldPosts, filteredLive, false),
+          userID,
+        ),
+      )
+    })
+  }
+
   const loadMorePosts = async userID => {
     if (!userID || pagination.current.exhausted || isLoadingBottom) {
       return
@@ -76,9 +90,12 @@ export const useProfile = (profileID, viewerID) => {
         pagination.current.size,
       )
 
-      if (!newPosts?.length) {
+      const safePosts = removeLocallyDeletedPosts(newPosts || [])
+
+      if (!safePosts.length) {
         if (pagination.current.page === 0) {
-          setPosts([])
+          const merged = deduplicatedPosts([], realtimePostsRef.current, true)
+          setPosts(hydratePostsWithMyReactions(merged, userID))
         }
         pagination.current.exhausted = true
         return
@@ -88,30 +105,18 @@ export const useProfile = (profileID, viewerID) => {
 
       setPosts(oldPosts =>
         hydratePostsWithMyReactions(
-          deduplicatedPosts(oldPosts, removeLocallyDeletedPosts(newPosts), true),
+          deduplicatedPosts(oldPosts, safePosts, true),
           userID,
         ),
       )
     } catch (error) {
       console.error('Error loading profile posts:', error)
+      if (posts == null) {
+        setPosts(hydratePostsWithMyReactions(realtimePostsRef.current || [], userID))
+      }
     } finally {
       setIsLoadingBottom(false)
     }
-  }
-
-  const subscribeToProfileFeedPosts = userID => {
-    return subscribeToProfileFeedPostsAPI(userID, newPosts => {
-      setPosts(oldPosts =>
-        hydratePostsWithMyReactions(
-          deduplicatedPosts(
-            oldPosts,
-            removeLocallyDeletedPosts(newPosts),
-            false,
-          ),
-          userID,
-        ),
-      )
-    })
   }
 
   const pullToRefresh = async userID => {
@@ -131,22 +136,20 @@ export const useProfile = (profileID, viewerID) => {
         pagination.current.size,
       )
 
-      if (!newPosts?.length) {
-        pagination.current.exhausted = true
+      const safePosts = removeLocallyDeletedPosts(newPosts || [])
+      const merged = deduplicatedPosts(realtimePostsRef.current, safePosts, true)
+
+      if (!merged.length) {
         setPosts([])
+        pagination.current.exhausted = true
         return
       }
 
       pagination.current.page += 1
-
-      setPosts(
-        hydratePostsWithMyReactions(
-          deduplicatedPosts([], removeLocallyDeletedPosts(newPosts), true),
-          userID,
-        ),
-      )
+      setPosts(hydratePostsWithMyReactions(merged, userID))
     } catch (error) {
       console.error('Error refreshing profile feed:', error)
+      setPosts(hydratePostsWithMyReactions(realtimePostsRef.current || [], userID))
     } finally {
       setRefreshing(false)
     }

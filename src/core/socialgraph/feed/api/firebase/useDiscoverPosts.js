@@ -40,7 +40,10 @@ export const useDiscoverPosts = () => {
   }
 
   const loadMorePosts = async (userID, isRefresh = false) => {
-    if (!userID) return
+    if (!userID) {
+      setPosts([])
+      return
+    }
 
     if (isRefresh) {
       pagination.current = {
@@ -63,7 +66,9 @@ export const useDiscoverPosts = () => {
         pagination.current.size,
       )
 
-      if (!newPosts?.length) {
+      const safePosts = Array.isArray(newPosts) ? newPosts : []
+
+      if (!safePosts.length) {
         if (pagination.current.page === 0) {
           setPosts([])
         }
@@ -76,8 +81,8 @@ export const useDiscoverPosts = () => {
       setPosts(oldPosts => {
         const combinedPosts =
           pagination.current.page === 1 || isRefresh
-            ? newPosts
-            : [...(oldPosts || []), ...newPosts]
+            ? safePosts
+            : [...(oldPosts || []), ...safePosts]
 
         return hydratePostsWithMyReactions(
           removeDuplicates(combinedPosts),
@@ -86,6 +91,9 @@ export const useDiscoverPosts = () => {
       })
     } catch (error) {
       console.error('Error loading discover posts:', error)
+      if (posts == null) {
+        setPosts([])
+      }
     } finally {
       setIsLoadingBottom(false)
     }

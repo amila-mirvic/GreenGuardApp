@@ -21,6 +21,7 @@ const DiscoverScreen = props => {
     isLoadingBottom,
     batchSize,
   } = useDiscoverPosts()
+
   const currentUser = useCurrentUser()
   const { markAbuse } = useUserReportingMutations()
 
@@ -32,7 +33,6 @@ const DiscoverScreen = props => {
     const colorSet = theme.colors[appearance]
     navigation.setOptions({
       headerTitle: localized('Discover'),
-  
       headerStyle: {
         backgroundColor: colorSet.primaryBackground,
         borderBottomColor: colorSet.hairline,
@@ -43,13 +43,9 @@ const DiscoverScreen = props => {
 
   useEffect(() => {
     if (currentUser?.id) {
-      loadMorePosts(currentUser?.id)
+      pullToRefresh(currentUser?.id)
     }
   }, [currentUser?.id])
-
-  const openDrawer = () => {
-    navigation.openDrawer()
-  }
 
   const onCommentPress = item => {
     let copyItem = { ...item }
@@ -79,17 +75,14 @@ const DiscoverScreen = props => {
 
   const onMediaClose = useCallback(() => {
     setIsMediaViewerOpen(false)
-  }, [setIsMediaViewerOpen])
+  }, [])
 
-  const onMediaPress = useCallback(
-    (media, mediaIndex) => {
-      const mediaUrls = media.map(item => item.url)
-      setSelectedFeedItems(mediaUrls)
-      setSelectedMediaIndex(mediaIndex)
-      setIsMediaViewerOpen(true)
-    },
-    [setIsMediaViewerOpen, setSelectedMediaIndex, setSelectedFeedItems],
-  )
+  const onMediaPress = useCallback((media, mediaIndex) => {
+    setSelectedMediaIndex(mediaIndex)
+    const mediaUrls = media.map(item => item.url)
+    setSelectedFeedItems(mediaUrls)
+    setIsMediaViewerOpen(true)
+  }, [])
 
   const onReaction = useCallback(
     async (reaction, item) => {
@@ -98,58 +91,50 @@ const DiscoverScreen = props => {
     [addReaction, currentUser],
   )
 
-  const onSharePost = useCallback(
-    async item => {
-      let url = ''
-      if (item.postMedia?.length > 0) {
-        url = item.postMedia[0]?.url || item.postMedia[0]
-      }
-      try {
-        const result = await Share.share(
-          {
-            title: 'Share SocialNetwork post.',
-            message: item.postText,
-            url,
-          },
-          {
-            dialogTitle: 'Share SocialNetwork post.',
-          },
-        )
-      } catch (error) {
-        alert(error.message)
-      }
-    },
-    [Share],
-  )
-
-  const onDeletePost = useCallback(async item => {
-    // generally you cannot delete a post in discover feed
-    // implement this if you want to delete a post in discover feed
+  const onSharePost = useCallback(async item => {
+    let url = ''
+    if (item.postMedia?.length > 0) {
+      url = item.postMedia[0]?.url || item.postMedia[0]
+    }
+    try {
+      await Share.share(
+        {
+          title: 'Share SocialNetwork post.',
+          message: item.postText,
+          url,
+        },
+        {
+          dialogTitle: 'Share SocialNetwork post.',
+        },
+      )
+    } catch (error) {
+      alert(error.message)
+    }
   }, [])
+
+  const onDeletePost = useCallback(async item => {}, [])
 
   const onUserReport = useCallback(
     async (item, type) => {
-      await markAbuse(currentUser.id, item.authorID, type)
+      markAbuse(currentUser.id, item.authorID, type)
     },
-    [currentUser.id, markAbuse],
+    [currentUser?.id, markAbuse],
   )
 
-  const handleOnEndReached = useCallback(
-    distanceFromEnd => {
-      if (currentUser?.id && posts?.length >= batchSize) {
-        loadMorePosts(currentUser?.id)
-      }
-    },
-    [loadMorePosts, currentUser?.id, posts],
-  )
+  const handleOnEndReached = useCallback(() => {
+    if ((posts?.length || 0) >= batchSize) {
+      loadMorePosts(currentUser?.id)
+    }
+  }, [currentUser?.id, posts, loadMorePosts, batchSize])
 
-  const onFeedScroll = useCallback(() => {}, [])
+  const onEmptyStatePress = useCallback(() => {}, [])
 
   const emptyStateConfig = {
     title: localized('No Discover Posts'),
     description: localized(
       'There are currently no posts from people who are not your friends. Posts from non-friends will show up here.',
     ),
+    onPress: onEmptyStatePress,
   }
 
   const pullToRefreshConfig = {
@@ -161,27 +146,27 @@ const DiscoverScreen = props => {
 
   return (
     <Feed
-      loading={posts == null}
+      loading={posts === null}
       posts={posts}
-      onFeedUserItemPress={onFeedUserItemPress}
       onCommentPress={onCommentPress}
+      user={currentUser}
+      onFeedUserItemPress={onFeedUserItemPress}
       isMediaViewerOpen={isMediaViewerOpen}
       feedItems={selectedFeedItems}
       onMediaClose={onMediaClose}
       onMediaPress={onMediaPress}
       selectedMediaIndex={selectedMediaIndex}
+      onReaction={onReaction}
       handleOnEndReached={handleOnEndReached}
       isLoadingBottom={isLoadingBottom}
-      onReaction={onReaction}
       onSharePost={onSharePost}
       onDeletePost={onDeletePost}
       onUserReport={onUserReport}
-      user={currentUser}
-      onFeedScroll={onFeedScroll}
-      emptyStateConfig={emptyStateConfig}
-      isCameraOpen={false}
-      pullToRefreshConfig={pullToRefreshConfig}
+      shouldReSizeMedia={true}
       displayStories={false}
+      emptyStateConfig={emptyStateConfig}
+      navigation={navigation}
+      pullToRefreshConfig={pullToRefreshConfig}
     />
   )
 }
