@@ -1,21 +1,23 @@
-import { db } from '../../firebase/config'
+import { functions } from '../../firebase/config'
 
-const topLevelNotificationsRef = db.collection('notifications')
+const DEFAULT_CALLABLE_TIMEOUT_MS = 15000
 
-const dedupeNotifications = notifications => {
-  const safeNotifications = Array.isArray(notifications)
-    ? notifications.filter(Boolean)
-    : []
+const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
+  let timeoutId
 
-  return safeNotifications.reduce((acc, curr) => {
-    if (!curr?.id) {
-      return acc
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
     }
-    if (!acc.some(item => item?.id === curr.id)) {
-      acc.push(curr)
-    }
-    return acc
-  }, [])
+  }
 }
 
 export const subscribeNotifications = (userId, callback) => {
@@ -24,48 +26,38 @@ export const subscribeNotifications = (userId, callback) => {
     return () => {}
   }
 
-  let topLevel = []
-  let legacyNested = []
+  let cancelled = false
 
-  const emit = () => {
-    const merged = dedupeNotifications([...topLevel, ...legacyNested]).sort(
-      (a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0),
-    )
-    callback && callback(merged)
+  const loadNotifications = async () => {
+    try {
+      const res = await withTimeout(
+        functions().httpsCallable('listNotifications')({
+          userID: userId,
+        }),
+      )
+
+      const notifications = res?.data?.notifications ?? []
+
+      if (!cancelled) {
+        callback && callback(notifications)
+      }
+    } catch (error) {
+      console.log('subscribeNotifications error:', error)
+      if (!cancelled) {
+        callback && callback([])
+      }
+    }
   }
 
-  const unsubscribeTopLevel = topLevelNotificationsRef
-    .where('toUserID', '==', userId)
-    .onSnapshot(
-      querySnapshot => {
-        topLevel = querySnapshot?.docs?.map(doc => doc.data()) ?? []
-        emit()
-      },
-      error => {
-        console.log('subscribeNotifications top-level error:', error)
-        topLevel = []
-        emit()
-      },
-    )
+  loadNotifications()
 
-  const unsubscribeLegacy = topLevelNotificationsRef
-    .doc(userId)
-    .collection('notifications')
-    .onSnapshot(
-      querySnapshot => {
-        legacyNested = querySnapshot?.docs?.map(doc => doc.data()) ?? []
-        emit()
-      },
-      error => {
-        console.log('subscribeNotifications legacy error:', error)
-        legacyNested = []
-        emit()
-      },
-    )
+  const intervalId = setInterval(() => {
+    loadNotifications()
+  }, 10000)
 
   return () => {
-    unsubscribeTopLevel && unsubscribeTopLevel()
-    unsubscribeLegacy && unsubscribeLegacy()
+    cancelled = true
+    clearInterval(intervalId)
   }
 }
 
@@ -75,41 +67,15 @@ export const updateNotification = async notification => {
       return { success: false }
     }
 
-    let updated = false
+    const res = await withTimeout(
+      functions().httpsCallable('updateNotification')({
+        notificationID: notification.id,
+      }),
+    )
 
-    try {
-      await topLevelNotificationsRef.doc(notification.id).set(
-        {
-          seen: true,
-        },
-        { merge: true },
-      )
-      updated = true
-    } catch (error) {
-      console.log('top-level updateNotification error:', error)
-    }
-
-    try {
-      if (notification?.toUserID) {
-        await topLevelNotificationsRef
-          .doc(notification.toUserID)
-          .collection('notifications')
-          .doc(notification.id)
-          .set(
-            {
-              seen: true,
-            },
-            { merge: true },
-          )
-        updated = true
-      }
-    } catch (error) {
-      console.log('legacy updateNotification error:', error)
-    }
-
-    return { success: updated }
+    return res?.data ?? { success: true }
   } catch (error) {
     console.log('updateNotification error:', error)
-    return { error, success: false }
+    return { success: false, error: error?.message || error }
   }
 }

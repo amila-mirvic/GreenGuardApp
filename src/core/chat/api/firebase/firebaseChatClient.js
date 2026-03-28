@@ -1,6 +1,7 @@
 import { ChatFunctions, DocRef, channelsRef } from './chatRef'
+import { db } from '../../../firebase/config'
 
-const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
+const DEFAULT_CALLABLE_TIMEOUT_MS = 20000
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
   let timeoutId
@@ -17,6 +18,59 @@ const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => 
     if (timeoutId) {
       clearTimeout(timeoutId)
     }
+  }
+}
+
+const normalizeCreatedAt = value => {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return Number.isNaN(n) ? 0 : n
+  }
+  if (value?.seconds) return value.seconds
+  if (typeof value?.toDate === 'function') {
+    return Math.floor(value.toDate().getTime() / 1000)
+  }
+  return 0
+}
+
+const dedupeById = items => {
+  const safeItems = Array.isArray(items) ? items.filter(Boolean) : []
+  return safeItems.reduce((acc, curr) => {
+    if (!curr?.id) return acc
+    if (!acc.some(item => item?.id === curr.id)) {
+      acc.push(curr)
+    }
+    return acc
+  }, [])
+}
+
+const getCanonicalMessages = async (channelID, page = 0, size = 1000) => {
+  try {
+    const liveSnap = await channelsRef
+      .doc(channelID)
+      .collection('messages_live')
+      .orderBy('createdAt', 'desc')
+      .get()
+
+    const historicalSnap = await channelsRef
+      .doc(channelID)
+      .collection('messages_historical')
+      .orderBy('createdAt', 'desc')
+      .get()
+
+    const live = liveSnap?.docs?.map(doc => doc.data()) ?? []
+    const historical = historicalSnap?.docs?.map(doc => doc.data()) ?? []
+
+    const merged = dedupeById([...live, ...historical]).sort(
+      (a, b) => normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
+    )
+
+    const start = page * size
+    return merged.slice(start, start + size)
+  } catch (error) {
+    console.log('getCanonicalMessages error:', error)
+    return []
   }
 }
 
@@ -38,7 +92,9 @@ const dedupeParticipants = participants => {
 
 const buildChannelPayload = (creator, otherParticipants, name, isAdmin = false) => {
   const participants = dedupeParticipants([creator, ...(otherParticipants || [])])
-  const isGroupChat = Boolean(isAdmin || (name && name.trim().length > 0) || participants.length > 2)
+  const isGroupChat = Boolean(
+    isAdmin || (name && name.trim().length > 0) || participants.length > 2,
+  )
 
   let channelID = ''
 
@@ -159,7 +215,7 @@ export const markChannelMessageAsRead = async (
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('markChannelMessageAsRead error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }
 
@@ -174,7 +230,7 @@ export const markUserAsTypingInChannel = async (channelID, userID) => {
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('markUserAsTypingInChannel error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }
 
@@ -191,7 +247,7 @@ export const sendMessage = async (channel, newMessage) => {
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('sendMessage error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }
 
@@ -207,7 +263,7 @@ export const deleteMessage = async (channel, messageID) => {
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('deleteMessage error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }
 
@@ -217,36 +273,56 @@ export const subscribeToMessages = (channelID, callback) => {
     return () => {}
   }
 
-  return DocRef(channelID)
-    .messagesLive
+  let live = []
+  let historical = []
+
+  const emit = () => {
+    const merged = dedupeById([...live, ...historical]).sort(
+      (a, b) => normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
+    )
+    callback && callback(merged)
+  }
+
+  const unsubscribeLive = channelsRef
+    .doc(channelID)
+    .collection('messages_live')
     .orderBy('createdAt', 'desc')
     .onSnapshot(
-      { includeMetadataChanges: true },
       snapshot => {
-        const items = snapshot?.docs?.map(doc => doc.data()) ?? []
-        callback && callback(items)
+        live = snapshot?.docs?.map(doc => doc.data()) ?? []
+        emit()
       },
       error => {
-        console.log('subscribeToMessages error:', error)
-        callback && callback([])
+        console.log('subscribeToMessages live error:', error)
+        live = []
+        emit()
       },
     )
+
+  const unsubscribeHistorical = channelsRef
+    .doc(channelID)
+    .collection('messages_historical')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(
+      snapshot => {
+        historical = snapshot?.docs?.map(doc => doc.data()) ?? []
+        emit()
+      },
+      error => {
+        console.log('subscribeToMessages historical error:', error)
+        historical = []
+        emit()
+      },
+    )
+
+  return () => {
+    unsubscribeLive && unsubscribeLive()
+    unsubscribeHistorical && unsubscribeHistorical()
+  }
 }
 
 export const listMessages = async (channelID, page = 0, size = 1000) => {
-  try {
-    const res = await withTimeout(
-      ChatFunctions().listMessages({
-        channelID,
-        page,
-        size,
-      }),
-    )
-    return res?.data?.messages ?? []
-  } catch (error) {
-    console.log('listMessages error:', error)
-    return []
-  }
+  return await getCanonicalMessages(channelID, page, size)
 }
 
 export const leaveGroup = async (channelID, userID, content) => {
@@ -261,7 +337,7 @@ export const leaveGroup = async (channelID, userID, content) => {
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('leaveGroup error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }
 
@@ -277,7 +353,7 @@ export const updateGroup = async (channelID, userID, channelData) => {
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('updateGroup error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }
 
@@ -291,7 +367,7 @@ export const deleteGroup = async channelID => {
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('deleteGroup error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }
 
@@ -308,6 +384,6 @@ export const addReaction = async (messageID, authorID, reaction, channelID) => {
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('addReaction error:', error)
-    return { success: false, error }
+    return { success: false, error: error?.message || error }
   }
 }

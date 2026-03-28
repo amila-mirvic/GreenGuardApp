@@ -177,7 +177,6 @@ const IMChatScreen = memo(props => {
 
   useEffect(() => {
     if (downloadObject !== null) {
-      // We've just finished the photo upload, so we send the message out
       onSendInput()
     }
   }, [downloadObject])
@@ -235,12 +234,10 @@ const IMChatScreen = memo(props => {
       return
     }
     console.log(`Remote channel changed`)
-    // We have a hydrated channel, so we replace the partial channel we have on the state
     const hydratedChannel = channelWithHydratedOtherParticipants(remoteChannel)
     setChannel(hydratedChannel)
     markThreadItemAsReadIfNeeded(hydratedChannel)
 
-    // We have a hydrated channel, so we update the title of the screen
     if (openedFromPushNotification) {
       configureNavigation(hydratedChannel)
     }
@@ -251,7 +248,6 @@ const IMChatScreen = memo(props => {
     if (!allParticipants) {
       return channel
     }
-    // otherParticipants are all the participants in the chat, except for the currently logged in user
     const otherParticipants =
       allParticipants &&
       allParticipants.filter(
@@ -259,7 +255,6 @@ const IMChatScreen = memo(props => {
       )
     return { ...channel, otherParticipants }
   }
-
 
   const onGroupSettingsActionDone = useCallback(
     (index, passedChannel) => {
@@ -478,32 +473,28 @@ const IMChatScreen = memo(props => {
     [setIsRenameDialogVisible],
   )
 
-
-
-const markThreadItemAsReadIfNeeded = channel => {
-  const {
-    id: channelID,
-    lastThreadMessageId,
-    readUserIDs,
-    lastMessage,
-  } = channel || {}
-
-  const userID = currentUser?.id
-  const safeReadUserIDs = Array.isArray(readUserIDs) ? readUserIDs : []
-  const isRead = safeReadUserIDs.includes(userID)
-
-  if (!isRead && channelID && lastMessage && userID) {
-    const newReadUserIDs = [...safeReadUserIDs, userID]
-    markChannelMessageAsRead(
-      channelID,
-      userID,
+  const markThreadItemAsReadIfNeeded = channel => {
+    const {
+      id: channelID,
       lastThreadMessageId,
-      newReadUserIDs,
-    )
+      readUserIDs,
+      lastMessage,
+    } = channel || {}
+
+    const userID = currentUser?.id
+    const safeReadUserIDs = Array.isArray(readUserIDs) ? readUserIDs : []
+    const isRead = safeReadUserIDs.includes(userID)
+
+    if (!isRead && channelID && lastMessage && userID) {
+      const newReadUserIDs = [...safeReadUserIDs, userID]
+      markChannelMessageAsRead(
+        channelID,
+        userID,
+        lastThreadMessageId,
+        newReadUserIDs,
+      )
+    }
   }
-}
-
-
 
   const onChangeTextInput = useCallback(
     text => {
@@ -517,14 +508,20 @@ const markThreadItemAsReadIfNeeded = channel => {
       currentUser,
       channelWithHydratedOtherParticipants(channel)?.otherParticipants,
     )
-    if (response) {
-      const channelID = channel?.channelID || channel?.id
 
-      setChannel(channelWithHydratedOtherParticipants(response))
+    if (response) {
+      const newHydratedChannel = channelWithHydratedOtherParticipants(response)
+      const newChannelID = newHydratedChannel?.channelID || newHydratedChannel?.id
+
+      setChannel(newHydratedChannel)
+
       subscribeMessagesRef.current && subscribeMessagesRef.current()
-      subscribeMessagesRef.current = subscribeToMessages(channelID)
+      subscribeMessagesRef.current = subscribeToMessages(newChannelID)
+
+      return newHydratedChannel
     }
-    return response
+
+    return null
   }
 
   const onSendInput = async () => {
@@ -532,6 +529,7 @@ const markThreadItemAsReadIfNeeded = channel => {
       console.log('No message to be sent')
       return
     }
+
     let tempInputValue = inputValue
     if (!tempInputValue) {
       tempInputValue = formatMessage(downloadObject, localized)
@@ -543,20 +541,29 @@ const markThreadItemAsReadIfNeeded = channel => {
       downloadObject,
       inReplyToItem,
     )
+
     richTextInputRef.current?.clear()
     setInputValue('')
     setInReplyToItem(null)
 
-    if (channel?.lastMessageDate || channel?.otherParticipants?.length > 1) {
-      await sendMessage(newMessage, tempInputValue)
+    const currentChannelID = channel?.channelID || channel?.id
+    const hasExistingChannel = Boolean(
+      currentChannelID &&
+        (channel?.lastMessageDate ||
+          channel?.creatorID ||
+          channel?.participants?.length > 1),
+    )
+
+    if (hasExistingChannel) {
+      await sendMessage(newMessage, tempInputValue, channel)
       return
     }
 
-    // If we don't have a chat message, we need to create a 1-1 channel first
     const newChannel = await createOne2OneChannel()
     if (newChannel) {
       await sendMessage(newMessage, tempInputValue, newChannel)
     }
+
     setLoading(false)
   }
 
@@ -574,6 +581,7 @@ const markThreadItemAsReadIfNeeded = channel => {
       setDownloadObject(null)
     }
   }
+
   const onPhotoUploadDialogDone = useCallback(
     index => {
       if (index === 0) {
@@ -629,7 +637,7 @@ const markThreadItemAsReadIfNeeded = channel => {
       .then(result => {
         if (result.canceled !== true) {
           const image = result.assets[0]
-          let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i // match pattern eg: image/jpeg
+          let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i
           let match = pattern.exec(image.uri)
           startUpload({ type: (match ?? [])[0], ...image })
         }
@@ -819,7 +827,6 @@ const markThreadItemAsReadIfNeeded = channel => {
       }
     }
 
-    // If we don't have a chat message, we need to create a 1-1 channel first
     const newChannel = await createChannel(
       currentUser,
       channelWithHydratedOtherParticipants(channel)?.otherParticipants,
