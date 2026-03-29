@@ -9,8 +9,21 @@ import { useReactions } from './useReactions'
 import { hydrateMessagesWithMyReactions, getMessageObject } from '../utils'
 import { useCurrentUser } from '../../../onboarding'
 
+const normalizeCreatedAt = value => {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+  if (value?.seconds) return value.seconds
+  if (typeof value?.toDate === 'function') {
+    return Math.floor(value.toDate().getTime() / 1000)
+  }
+  return 0
+}
+
 export const useChatMessages = () => {
-  const [messages, setMessages] = useState(null)
+  const [messages, setMessages] = useState([])
 
   const pagination = useRef({ page: 0, size: 25, exhausted: false })
 
@@ -21,41 +34,76 @@ export const useChatMessages = () => {
     await handleMessageReaction(message, reaction, author, channelID)
   }
 
+  const deduplicatedMessages = (oldMessages, newMessages, appendToBottom) => {
+    const oldList = Array.isArray(oldMessages) ? oldMessages.filter(Boolean) : []
+    const newList = Array.isArray(newMessages) ? newMessages.filter(Boolean) : []
+
+    const all = appendToBottom
+      ? [...oldList, ...newList]
+      : [...newList, ...oldList]
+
+    const deduped = all.reduce((acc, curr) => {
+      const currId = curr?.id
+      if (!currId) return acc
+      if (!acc.some(msg => msg?.id === currId)) {
+        acc.push(curr)
+      }
+      return acc
+    }, [])
+
+    return deduped.sort((a, b) => {
+      const aTime = normalizeCreatedAt(a?.createdAt)
+      const bTime = normalizeCreatedAt(b?.createdAt)
+      return bTime - aTime
+    })
+  }
+
   const loadMoreMessages = async channelID => {
     if (!channelID || pagination.current.exhausted) {
       return
     }
 
-    const newMessages = await listMessagesAPI(
-      channelID,
-      pagination.current.page,
-      pagination.current.size,
-    )
+    try {
+      const newMessages = await listMessagesAPI(
+        channelID,
+        pagination.current.page,
+        pagination.current.size,
+      )
 
-    if (!newMessages?.length) {
-      pagination.current.exhausted = true
-      return
+      if (!newMessages?.length) {
+        pagination.current.exhausted = true
+        return
+      }
+
+      pagination.current.page += 1
+
+      setMessages(prevMessages =>
+        hydrateMessagesWithMyReactions(
+          deduplicatedMessages(prevMessages, newMessages, true),
+          currentUser?.id,
+        ),
+      )
+    } catch (error) {
+      console.log('loadMoreMessages error:', error)
     }
-
-    pagination.current.page += 1
-
-    setMessages(prevMessages =>
-      hydrateMessagesWithMyReactions(
-        deduplicatedMessages(prevMessages, newMessages, true),
-        currentUser?.id,
-      ),
-    )
   }
 
   const subscribeToMessages = channelID => {
+    pagination.current = { page: 0, size: 25, exhausted: false }
+
+    // KLJUČNI FIX:
+    // ako još ne postoji pravi channel, chat ne smije ostati u loading loop-u
     if (!channelID) {
-      return null
+      setMessages([])
+      return () => {}
     }
 
     return subscribeMessagesAPI(channelID, newMessages => {
+      const safeMessages = Array.isArray(newMessages) ? newMessages : []
+
       setMessages(prevMessages =>
         hydrateMessagesWithMyReactions(
-          deduplicatedMessages(prevMessages, newMessages, false),
+          deduplicatedMessages(prevMessages, safeMessages, false),
           currentUser?.id,
         ),
       )
@@ -81,30 +129,6 @@ export const useChatMessages = () => {
 
   const deleteMessage = async (channel, threadItemID) => {
     return deleteMessageAPI(channel, threadItemID)
-  }
-
-  const deduplicatedMessages = (oldMessages, newMessages, appendToBottom) => {
-    const oldList = Array.isArray(oldMessages) ? oldMessages.filter(Boolean) : []
-    const newList = Array.isArray(newMessages) ? newMessages.filter(Boolean) : []
-
-    const all = appendToBottom
-      ? [...oldList, ...newList]
-      : [...newList, ...oldList]
-
-    const deduped = all.reduce((acc, curr) => {
-      const currId = curr?.id
-      if (!currId) return acc
-      if (!acc.some(msg => msg?.id === currId)) {
-        acc.push(curr)
-      }
-      return acc
-    }, [])
-
-    return deduped.sort((a, b) => {
-      const aTime = Number(a?.createdAt || 0)
-      const bTime = Number(b?.createdAt || 0)
-      return bTime - aTime
-    })
   }
 
   return {

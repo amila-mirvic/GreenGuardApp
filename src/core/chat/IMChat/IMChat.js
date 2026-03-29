@@ -1,4 +1,4 @@
-import React, { useState, useCallback, memo } from 'react'
+import React, { useState, useCallback, memo, useMemo } from 'react'
 import { Platform, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -65,6 +65,10 @@ const IMChat = memo(props => {
   const { markUserAsTypingInChannel } = useChatChannels()
   const insets = useSafeAreaInsets()
 
+  const safeMessages = useMemo(() => {
+    return Array.isArray(messages) ? messages : []
+  }, [messages])
+
   const [channel] = useState({})
   const [temporaryInReplyToItem, setTemporaryInReplyToItem] = useState(null)
   const [threadItemActionSheet, setThreadItemActionSheet] = useState({})
@@ -97,7 +101,7 @@ const IMChat = memo(props => {
       })
       markUserAsTyping(displayText)
     },
-    [markUserAsTyping, onChangeTextInput],
+    [onChangeTextInput],
   )
 
   const onAudioRecordDone = useCallback(
@@ -135,7 +139,7 @@ const IMChat = memo(props => {
         })
       }
     },
-    [user.id],
+    [user?.id],
   )
 
   const onReplyPress = useCallback(
@@ -164,9 +168,11 @@ const IMChat = memo(props => {
       if (index === outBoundThreadItemSheetOptions.indexOf(REPLY)) {
         return onReplyPress(index)
       }
+
       if (index === outBoundThreadItemSheetOptions.indexOf(FORWARD)) {
         return setShowForwardMessageModal(true)
       }
+
       if (index === outBoundThreadItemSheetOptions.indexOf(DELETE)) {
         return onDeleteThreadItem && onDeleteThreadItem(temporaryInReplyToItem)
       }
@@ -193,17 +199,17 @@ const IMChat = memo(props => {
       }
     },
     [
-      threadItemActionSheet.inBound,
       handleInBoundThreadItemActionSheet,
-      handleOutBoundThreadItemActionSheet,
       handleMediaThreadItemActionSheet,
+      handleOutBoundThreadItemActionSheet,
+      threadItemActionSheet.inBound,
     ],
   )
 
   const onForwardMessage = useCallback(
-    channel => {
+    selectedChannel => {
       if (onForwardMessageActionPress) {
-        onForwardMessageActionPress(channel, temporaryInReplyToItem)
+        onForwardMessageActionPress(selectedChannel, temporaryInReplyToItem)
       }
     },
     [onForwardMessageActionPress, temporaryInReplyToItem],
@@ -280,7 +286,10 @@ const IMChat = memo(props => {
   }
 
   const keyboardVerticalOffset = Platform.OS === 'android' ? 0 : 0
-  const extraBottomInset = Math.max(insets.bottom || 0, Platform.OS === 'android' ? 12 : 0)
+  const extraBottomInset = Math.max(
+    insets.bottom || 0,
+    Platform.OS === 'android' ? 12 : 0,
+  )
 
   return (
     <KeyboardAvoidingView
@@ -290,7 +299,7 @@ const IMChat = memo(props => {
     >
       <View style={{ flex: 1 }}>
         <MessageThread
-          messages={messages}
+          messages={safeMessages}
           user={user}
           onChatMediaPress={onChatMediaPress}
           onSenderProfilePicturePress={onSenderProfilePicturePress}
@@ -299,9 +308,16 @@ const IMChat = memo(props => {
           onListEndReached={onListEndReached}
           onChatUserItemPress={onChatUserItemPress}
         />
+
         {renderReactionsContainer()}
+
         {!isReactionsContainerVisible && (
-          <View style={{ paddingBottom: extraBottomInset, backgroundColor: theme.colors[appearance].primaryBackground }}>
+          <View
+            style={{
+              paddingBottom: extraBottomInset,
+              backgroundColor: theme.colors[appearance].primaryBackground,
+            }}
+          >
             <BottomInput
               richTextInputRef={richTextInputRef}
               onAudioRecordDone={onAudioRecordDone}
@@ -317,6 +333,7 @@ const IMChat = memo(props => {
             />
           </View>
         )}
+
         {isReactionsContainerVisible && renderThreadItemActionSheet()}
       </View>
 
@@ -331,18 +348,21 @@ const IMChat = memo(props => {
           showRenameDialog(false)
         }}
       />
+
       <MediaViewerModal
         mediaItems={mediaItemURLs}
         isModalOpen={isMediaViewerOpen}
         onClosed={onMediaClose}
         selectedMediaIndex={selectedMediaIndex}
       />
+
       <ForwardMessageModal
         isVisible={showForwardMessageModal}
         onDismiss={() => setShowForwardMessageModal(false)}
         onSend={onForwardMessage}
       />
-      {(loading || messages == null) && <ActivityIndicator />}
+
+      {loading && <ActivityIndicator />}
     </KeyboardAvoidingView>
   )
 })
