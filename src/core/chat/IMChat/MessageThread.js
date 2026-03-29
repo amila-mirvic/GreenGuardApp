@@ -78,7 +78,9 @@ const MessageThread = memo(props => {
 
   const renderChatItem = ({ item, index }) => {
     const isRecentItem = 0 === index
-    const { participants } = channelItem
+    const participants = Array.isArray(channelItem?.participants)
+      ? channelItem.participants
+      : []
     return (
       <ThreadItem
         item={item}

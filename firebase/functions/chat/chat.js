@@ -43,7 +43,7 @@ exports.markAsRead = functions
       )
       console.log(doc)
       if (doc?.ref) {
-        doc.ref.set({ readUserIDs }, { merge: true })
+        doc.ref.set({ readUserIDs: dedupedReadUserIDs }, { merge: true })
       }
     }
 
@@ -179,7 +179,7 @@ exports.deleteMessage = functions.https.onCall(async (data, context) => {
           : lastMessage.media,
       lastMessageDate: lastMessage.createdAt,
       lastMessageSenderId: lastMessage.senderID,
-      lastThreadMessageId: lastMessage._id,
+      lastThreadMessageId: lastMessage.id,
       readUserIDs: [lastMessage.senderID],
     }
   }
@@ -187,7 +187,7 @@ exports.deleteMessage = functions.https.onCall(async (data, context) => {
   await chatChannelsRef.doc(channelID).set(updatedMetadata, { merge: true })
 
   // Then we hydrate all the participants' chat feeds
-  await hydrateChatFeedsForAllParticipants(channelID, messageData)
+  await hydrateChatFeedsForAllParticipants(channelID, lastMessage || { senderID: '', content: '', createdAt: 0, id: '' })
 
   return { success: true }
 })

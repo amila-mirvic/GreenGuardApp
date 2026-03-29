@@ -136,7 +136,13 @@ export const createChannel = async (
     )
 
     const res = await withTimeout(ChatFunctions().createChannel(payload))
-    return res?.data ?? payload
+    const createdChannel = res?.data
+
+    if (!createdChannel?.id && !createdChannel?.channelID) {
+      return null
+    }
+
+    return createdChannel
   } catch (error) {
     console.log('createChannel error:', error)
     return null
@@ -183,6 +189,14 @@ export const markUserAsTypingInChannel = async (channelID, userID) => {
 export const sendMessage = async (channel, newMessage) => {
   try {
     const channelID = channel?.id || channel?.channelID
+
+    if (!channelID) {
+      return {
+        success: false,
+        error: 'Missing channel ID. The message could not be sent.',
+      }
+    }
+
     const res = await withTimeout(
       ChatFunctions().insertMessage({
         channelID,
@@ -190,7 +204,15 @@ export const sendMessage = async (channel, newMessage) => {
         message: newMessage,
       }),
     )
-    return res?.data ?? { success: true }
+
+    if (res?.data == null) {
+      return {
+        success: false,
+        error: 'The chat channel could not be found or the message was not saved.',
+      }
+    }
+
+    return res.data
   } catch (error) {
     console.log('sendMessage error:', error)
     return { success: false, error }
