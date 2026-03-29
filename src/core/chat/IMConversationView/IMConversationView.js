@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react'
 import { View, Text, TouchableOpacity } from 'react-native'
-import { useTheme } from '../../dopebase'
+import { useTheme, useTranslations } from '../../dopebase'
 import IMConversationIconView from './IMConversationIconView/IMConversationIconView'
 import { timeFormat } from '../../helpers/timeFormat'
 import dynamicStyles from './styles'
@@ -9,6 +9,7 @@ const IMConversationView = memo(props => {
   const { onChatItemPress, item, user } = props
 
   const { theme, appearance } = useTheme()
+  const { localized } = useTranslations()
   const styles = dynamicStyles(theme, appearance)
 
   const userID = user?.userID || user?.id
@@ -42,17 +43,46 @@ const IMConversationView = memo(props => {
     return 'Conversation'
   }, [item?.title, item?.name, safeParticipants])
 
-  const safePreview = useMemo(() => {
+  const basePreview = useMemo(() => {
     if (typeof item?.lastMessage === 'string' && item.lastMessage.trim().length > 0) {
-      return item.lastMessage
+      return item.lastMessage.trim()
     }
 
     if (typeof item?.content === 'string' && item.content.trim().length > 0) {
-      return item.content
+      return item.content.trim()
+    }
+
+    const mediaType = item?.media?.type
+    if (typeof mediaType === 'string') {
+      if (mediaType.includes('image')) {
+        return localized('Photo')
+      }
+      if (mediaType.includes('video')) {
+        return localized('Video')
+      }
+      if (mediaType.includes('audio')) {
+        return localized('Audio')
+      }
+      if (mediaType.includes('file')) {
+        return localized('File')
+      }
     }
 
     return ''
-  }, [item?.lastMessage, item?.content])
+  }, [item?.lastMessage, item?.content, item?.media, localized])
+
+  const safePreview = useMemo(() => {
+    if (!basePreview) {
+      return ''
+    }
+
+    const lastMessageSenderId = item?.lastMessageSenderId || item?.senderID
+    if (lastMessageSenderId && lastMessageSenderId === userID) {
+      return `You: ${basePreview}`
+    }
+
+    return basePreview
+  }, [basePreview, item?.lastMessageSenderId, item?.senderID, userID])
 
   const safeTimestamp = useMemo(() => {
     try {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useChatChannels } from './useChatChannels'
 import { useSocialGraphFriends } from '../../../socialgraph/friendships'
 import { useCurrentUser } from '../../../onboarding'
@@ -11,50 +11,85 @@ const buildDirectChannelID = (id1, id2) => {
 const getItemID = item => item?.id || item?.channelID
 
 const getItemTimestamp = item =>
-  item?.updatedAt || item?.lastMessageDate || item?.createdAt || 0
+  Number(item?.lastMessageDate || item?.updatedAt || item?.createdAt || 0)
 
-const getItemRichnessScore = item => {
-  if (!item) return 0
+const normalizeConversation = item => {
+  if (!item) {
+    return null
+  }
 
-  let score = 0
-
-  if (Array.isArray(item?.participants) && item.participants.length > 0) score += 1
-  if (typeof item?.title === 'string' && item.title.trim().length > 0) score += 1
-  if (typeof item?.name === 'string' && item.name.trim().length > 0) score += 1
-  if (typeof item?.content === 'string' && item.content.trim().length > 0) score += 3
-  if (typeof item?.lastMessage === 'string' && item.lastMessage.trim().length > 0)
-    score += 4
-  if (item?.media) score += 2
-  if (typeof item?.markedAsRead === 'boolean') score += 3
-  if (item?.lastMessageDate) score += 4
-  if (item?.createdAt) score += 1
-
-  return score
-}
-
-const mergeItemsPreferRicher = (existingItem, incomingItem) => {
-  if (!existingItem) return incomingItem
-  if (!incomingItem) return existingItem
-
-  const existingScore = getItemRichnessScore(existingItem)
-  const incomingScore = getItemRichnessScore(incomingItem)
-
-  const base =
-    incomingScore >= existingScore ? incomingItem : existingItem
-
-  const secondary =
-    incomingScore >= existingScore ? existingItem : incomingItem
+  const id = getItemID(item)
+  if (!id) {
+    return null
+  }
 
   return {
-    ...secondary,
-    ...base,
-    id: getItemID(base) || getItemID(secondary),
-    channelID: getItemID(base) || getItemID(secondary),
-    participants: Array.isArray(base?.participants)
-      ? base.participants
-      : Array.isArray(secondary?.participants)
-      ? secondary.participants
+    ...item,
+    id,
+    channelID: id,
+    participants: Array.isArray(item?.participants)
+      ? item.participants.filter(Boolean)
       : [],
+  }
+}
+
+const getNonEmptyString = (...values) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+  return ''
+}
+
+const mergeTwoItems = (existingItem, incomingItem) => {
+  const existing = normalizeConversation(existingItem)
+  const incoming = normalizeConversation(incomingItem)
+
+  if (!existing) return incoming
+  if (!incoming) return existing
+
+  const existingTs = getItemTimestamp(existing)
+  const incomingTs = getItemTimestamp(incoming)
+
+  const newer = incomingTs >= existingTs ? incoming : existing
+  const older = incomingTs >= existingTs ? existing : incoming
+
+  return {
+    ...older,
+    ...newer,
+    id: newer.id || older.id,
+    channelID: newer.channelID || older.channelID,
+    participants:
+      Array.isArray(newer?.participants) && newer.participants.length > 0
+        ? newer.participants
+        : Array.isArray(older?.participants)
+        ? older.participants
+        : [],
+    title: getNonEmptyString(newer?.title, older?.title),
+    name: getNonEmptyString(newer?.name, older?.name),
+    lastMessage: getNonEmptyString(
+      newer?.lastMessage,
+      newer?.content,
+      older?.lastMessage,
+      older?.content,
+    ),
+    content: getNonEmptyString(
+      newer?.content,
+      newer?.lastMessage,
+      older?.content,
+      older?.lastMessage,
+    ),
+    lastMessageDate:
+      newer?.lastMessageDate ?? older?.lastMessageDate ?? older?.createdAt ?? '',
+    lastMessageSenderId:
+      newer?.lastMessageSenderId ?? older?.lastMessageSenderId ?? '',
+    markedAsRead:
+      typeof newer?.markedAsRead === 'boolean'
+        ? newer.markedAsRead
+        : typeof older?.markedAsRead === 'boolean'
+        ? older.markedAsRead
+        : true,
   }
 }
 
@@ -62,49 +97,32 @@ export const useChatChannelsAndFriends = () => {
   const currentUser = useCurrentUser()
   const {
     channels,
+    refreshing,
+    loadingBottom,
     subscribeToChannels,
+    loadMoreChannels,
     pullToRefresh,
+    createChannel,
+    markChannelMessageAsRead,
+    markUserAsTypingInChannel,
+    updateGroup,
+    leaveGroup,
+    deleteGroup,
   } = useChatChannels()
+
   const { friends } = useSocialGraphFriends(currentUser?.id)
 
-  const [
-    hydratedListWithChannelsAndFriends,
-    setHydratedListWithChannelsAndFriends,
-  ] = useState([])
-
-  useEffect(() => {
-    if (!currentUser?.id) {
-      return
-    }
-
-    const unsubscribe = subscribeToChannels(currentUser?.id)
-    pullToRefresh(currentUser?.id)
-
-    return () => {
-      unsubscribe && unsubscribe()
-    }
-  }, [currentUser?.id])
-
-  const mergedList = useMemo(() => {
+  const hydratedListWithChannelsAndFriends = useMemo(() => {
     const safeChannels = Array.isArray(channels) ? channels.filter(Boolean) : []
     const safeFriends = Array.isArray(friends) ? friends.filter(Boolean) : []
 
     const byID = new Map()
 
     safeChannels.forEach(channel => {
-      const channelID = getItemID(channel)
-      if (!channelID) {
-        return
-      }
-
-      byID.set(channelID, {
-        ...channel,
-        id: channelID,
-        channelID,
-        participants: Array.isArray(channel?.participants)
-          ? channel.participants
-          : [],
-      })
+      const normalized = normalizeConversation(channel)
+      const id = getItemID(normalized)
+      if (!id) return
+      byID.set(id, normalized)
     })
 
     safeFriends.forEach(friend => {
@@ -126,10 +144,12 @@ export const useChatChannelsAndFriends = () => {
           friend?.username ||
           'Conversation',
         lastMessage: '',
+        content: '',
+        markedAsRead: true,
       }
 
       const existing = byID.get(channelID)
-      byID.set(channelID, mergeItemsPreferRicher(existing, placeholder))
+      byID.set(channelID, mergeTwoItems(existing, placeholder))
     })
 
     return Array.from(byID.values()).sort(
@@ -137,11 +157,19 @@ export const useChatChannelsAndFriends = () => {
     )
   }, [channels, friends, currentUser])
 
-  useEffect(() => {
-    setHydratedListWithChannelsAndFriends(mergedList)
-  }, [mergedList])
-
   return {
     hydratedListWithChannelsAndFriends,
+    channels,
+    refreshing,
+    loadingBottom,
+    subscribeToChannels,
+    loadMoreChannels,
+    pullToRefresh,
+    createChannel,
+    markChannelMessageAsRead,
+    markUserAsTypingInChannel,
+    updateGroup,
+    leaveGroup,
+    deleteGroup,
   }
 }

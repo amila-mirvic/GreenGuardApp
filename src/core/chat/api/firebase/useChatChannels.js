@@ -10,6 +10,119 @@ import {
   markUserAsTypingInChannel as markUserAsTypingInChannelAPI,
 } from './firebaseChatClient'
 
+const getChannelID = item => item?.id || item?.channelID
+
+const getChannelTimestamp = item =>
+  Number(item?.lastMessageDate || item?.updatedAt || item?.createdAt || 0)
+
+const normalizeChannel = item => {
+  if (!item) {
+    return null
+  }
+
+  const id = getChannelID(item)
+  if (!id) {
+    return null
+  }
+
+  return {
+    ...item,
+    id,
+    channelID: id,
+    participants: Array.isArray(item?.participants)
+      ? item.participants.filter(Boolean)
+      : [],
+  }
+}
+
+const getNonEmptyString = (...values) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+  return ''
+}
+
+const mergeTwoChannels = (existingItem, incomingItem) => {
+  const existing = normalizeChannel(existingItem)
+  const incoming = normalizeChannel(incomingItem)
+
+  if (!existing) return incoming
+  if (!incoming) return existing
+
+  const existingTs = getChannelTimestamp(existing)
+  const incomingTs = getChannelTimestamp(incoming)
+
+  const newer = incomingTs >= existingTs ? incoming : existing
+  const older = incomingTs >= existingTs ? existing : incoming
+
+  return {
+    ...older,
+    ...newer,
+    id: newer.id || older.id,
+    channelID: newer.channelID || older.channelID,
+    participants:
+      Array.isArray(newer?.participants) && newer.participants.length > 0
+        ? newer.participants
+        : Array.isArray(older?.participants)
+        ? older.participants
+        : [],
+    title: getNonEmptyString(newer?.title, older?.title),
+    name: getNonEmptyString(newer?.name, older?.name),
+    content: getNonEmptyString(
+      newer?.content,
+      newer?.lastMessage,
+      older?.content,
+      older?.lastMessage,
+    ),
+    lastMessage: getNonEmptyString(
+      newer?.lastMessage,
+      newer?.content,
+      older?.lastMessage,
+      older?.content,
+    ),
+    media: newer?.media ?? older?.media ?? null,
+    lastMessageDate:
+      newer?.lastMessageDate ?? older?.lastMessageDate ?? older?.createdAt ?? '',
+    lastMessageSenderId:
+      newer?.lastMessageSenderId ?? older?.lastMessageSenderId ?? '',
+    markedAsRead:
+      typeof newer?.markedAsRead === 'boolean'
+        ? newer.markedAsRead
+        : typeof older?.markedAsRead === 'boolean'
+        ? older.markedAsRead
+        : true,
+    createdAt: newer?.createdAt ?? older?.createdAt ?? '',
+  }
+}
+
+const mergeChannelLists = (oldChannels, newChannels, appendToBottom = false) => {
+  const oldList = Array.isArray(oldChannels) ? oldChannels.filter(Boolean) : []
+  const newList = Array.isArray(newChannels) ? newChannels.filter(Boolean) : []
+
+  const ordered = appendToBottom
+    ? [...oldList, ...newList]
+    : [...newList, ...oldList]
+
+  const byID = new Map()
+
+  ordered.forEach(item => {
+    const normalized = normalizeChannel(item)
+    const id = getChannelID(normalized)
+    if (!id) {
+      return
+    }
+
+    const existing = byID.get(id)
+    byID.set(id, mergeTwoChannels(existing, normalized))
+  })
+
+  return Array.from(byID.values()).sort(
+    (a, b) => getChannelTimestamp(b) - getChannelTimestamp(a),
+  )
+}
+
 export const useChatChannels = () => {
   const [channels, setChannels] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -19,42 +132,8 @@ export const useChatChannels = () => {
   const realtimeChannelsRef = useRef([])
   const semaphores = useRef({ isMarkingAsTyping: false })
 
-  const deduplicatedChannels = (oldChannels, newChannels, appendToBottom) => {
-    const oldList = Array.isArray(oldChannels) ? oldChannels.filter(Boolean) : []
-    const newList = Array.isArray(newChannels) ? newChannels.filter(Boolean) : []
-
-    const all = appendToBottom
-      ? [...oldList, ...newList]
-      : [...newList, ...oldList]
-
-    return all.reduce((acc, curr) => {
-      const currId = curr?.id || curr?.channelID
-      if (!currId) {
-        return acc
-      }
-
-      if (!acc.some(friend => (friend?.id || friend?.channelID) === currId)) {
-        acc.push({
-          ...curr,
-          id: currId,
-          participants: Array.isArray(curr?.participants)
-            ? curr.participants
-            : [],
-        })
-      }
-
-      return acc
-    }, [])
-  }
-
   const loadMoreChannels = async userID => {
-    if (
-      !userID ||
-      pagination.current.exhausted ||
-      loadingBottom ||
-      !Array.isArray(channels) ||
-      channels.length < pagination.current.size
-    ) {
+    if (!userID || pagination.current.exhausted || loadingBottom) {
       return
     }
 
@@ -71,12 +150,13 @@ export const useChatChannels = () => {
 
       if (safeChannels.length < pagination.current.size) {
         pagination.current.exhausted = true
+      } else {
+        pagination.current.page += 1
       }
 
       if (safeChannels.length > 0) {
-        pagination.current.page += 1
         setChannels(oldChannels =>
-          deduplicatedChannels(oldChannels, safeChannels, true),
+          mergeChannelLists(oldChannels, safeChannels, true),
         )
       }
     } catch (error) {
@@ -90,9 +170,11 @@ export const useChatChannels = () => {
     return subscribeChannelsAPI(userID, newChannels => {
       const safeChannels = Array.isArray(newChannels) ? newChannels : []
       realtimeChannelsRef.current = safeChannels
+        .map(normalizeChannel)
+        .filter(Boolean)
 
       setChannels(oldChannels =>
-        deduplicatedChannels(oldChannels, safeChannels, false),
+        mergeChannelLists(oldChannels, safeChannels, false),
       )
     })
   }
@@ -111,11 +193,6 @@ export const useChatChannels = () => {
       )
 
       const safeChannels = Array.isArray(newChannels) ? newChannels : []
-      const merged = deduplicatedChannels(
-        realtimeChannelsRef.current,
-        safeChannels,
-        true,
-      )
 
       if (safeChannels.length < pagination.current.size) {
         pagination.current.exhausted = true
@@ -123,10 +200,18 @@ export const useChatChannels = () => {
         pagination.current.page += 1
       }
 
-      setChannels(merged)
+      setChannels(oldChannels =>
+        mergeChannelLists(
+          mergeChannelLists(oldChannels, realtimeChannelsRef.current, false),
+          safeChannels,
+          false,
+        ),
+      )
     } catch (error) {
       console.log('pullToRefresh channels error:', error)
-      setChannels(realtimeChannelsRef.current || [])
+      setChannels(oldChannels =>
+        mergeChannelLists(oldChannels, realtimeChannelsRef.current, false),
+      )
     } finally {
       setRefreshing(false)
     }

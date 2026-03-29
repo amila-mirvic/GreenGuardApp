@@ -13,16 +13,35 @@ export const useChatMessages = () => {
   const [messages, setMessages] = useState(null)
 
   const pagination = useRef({ page: 0, size: 25, exhausted: false })
+  const activeChannelIDRef = useRef(null)
 
   const { handleMessageReaction } = useReactions(setMessages)
   const currentUser = useCurrentUser()
+
+  const resetForChannelIfNeeded = channelID => {
+    if (!channelID) {
+      return
+    }
+
+    if (activeChannelIDRef.current !== channelID) {
+      activeChannelIDRef.current = channelID
+      pagination.current = { page: 0, size: 25, exhausted: false }
+      setMessages(null)
+    }
+  }
 
   const addReaction = async (message, author, reaction, channelID) => {
     await handleMessageReaction(message, reaction, author, channelID)
   }
 
   const loadMoreMessages = async channelID => {
-    if (!channelID || pagination.current.exhausted) {
+    if (!channelID) {
+      return
+    }
+
+    resetForChannelIfNeeded(channelID)
+
+    if (pagination.current.exhausted) {
       return
     }
 
@@ -34,6 +53,7 @@ export const useChatMessages = () => {
 
     if (!newMessages?.length) {
       pagination.current.exhausted = true
+      setMessages(prevMessages => (Array.isArray(prevMessages) ? prevMessages : []))
       return
     }
 
@@ -51,6 +71,8 @@ export const useChatMessages = () => {
     if (!channelID) {
       return null
     }
+
+    resetForChannelIfNeeded(channelID)
 
     return subscribeMessagesAPI(channelID, newMessages => {
       setMessages(prevMessages =>
@@ -91,16 +113,20 @@ export const useChatMessages = () => {
       ? [...oldList, ...newList]
       : [...newList, ...oldList]
 
-    const deduped = all.reduce((acc, curr) => {
-      const currId = curr?.id
-      if (!currId) return acc
-      if (!acc.some(msg => msg?.id === currId)) {
-        acc.push(curr)
-      }
-      return acc
-    }, [])
+    const byID = new Map()
 
-    return deduped.sort((a, b) => {
+    all.forEach(curr => {
+      const currId = curr?.id
+      if (!currId) return
+
+      const existing = byID.get(currId)
+      byID.set(currId, {
+        ...(existing || {}),
+        ...curr,
+      })
+    })
+
+    return Array.from(byID.values()).sort((a, b) => {
       const aTime = Number(a?.createdAt || 0)
       const bTime = Number(b?.createdAt || 0)
       return bTime - aTime

@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const { v4: uuidv4 } = require('uuid')
 
 const db = admin.firestore()
 const socialFeedsRef = db.collection('social_feeds')
@@ -11,6 +10,30 @@ const { fetchUser } = userClient
 const collectionsUtils = require('../core/collections')
 const { sendPushNotification } = require('../notifications/utils')
 const { add } = collectionsUtils
+
+const buildPreviewText = message => {
+  if (typeof message?.content === 'string' && message.content.trim().length > 0) {
+    return message.content.trim()
+  }
+
+  const mediaType = message?.media?.type
+  if (typeof mediaType === 'string') {
+    if (mediaType.includes('image')) {
+      return 'Photo'
+    }
+    if (mediaType.includes('video')) {
+      return 'Video'
+    }
+    if (mediaType.includes('audio')) {
+      return 'Audio'
+    }
+    if (mediaType.includes('file')) {
+      return 'File'
+    }
+  }
+
+  return ''
+}
 
 exports.createChannel = async data => {
   console.log('Creating channel: ')
@@ -29,9 +52,11 @@ exports.createChannel = async data => {
   await hydrateChatFeedsForAllParticipants(
     id,
     {
+      id: `channel_bootstrap_${id}`,
       createdAt: Math.floor(new Date().getTime() / 1000),
       senderID: creatorID,
       content: 'New channel created.',
+      media: null,
     },
     true,
   )
@@ -62,9 +87,10 @@ exports.insertMessage = async data => {
   try {
     await add(chatChannelsRef.doc(channelID), 'messages', messageData, true)
 
+    const previewText = buildPreviewText(messageData)
+
     const updatedMetadata = {
-      lastMessage:
-        messageData?.content?.length > 0 ? messageData.content : messageData.media,
+      lastMessage: previewText,
       lastMessageDate: messageData.createdAt,
       lastMessageSenderId: messageData.senderID,
       lastThreadMessageId: messageData.id,
@@ -90,7 +116,6 @@ const hydrateChatFeedsForAllParticipants = async (
   channelID,
   message,
   isNewChannel = false,
-  isLeaveGroup = false,
 ) => {
   const channelSnap = await chatChannelsRef.doc(channelID).get()
   const channel = channelSnap?.data()
@@ -123,19 +148,33 @@ const hydrateChatFeedsForAllParticipants = async (
       }`.trim() || channel?.name || sender?.firstName || 'Conversation'
   }
 
-  const data = {
+  const previewText = buildPreviewText(message)
+
+  const baseFeedData = {
     id: channelID,
-    title: feedItemTitleForSender,
-    content: message?.content ?? '',
-    media: message?.media ?? {},
-    markedAsRead: true,
-    createdAt: message?.createdAt,
     participants,
     creatorID: channel.creatorID,
     admins: channel?.admins ?? [],
+    content: previewText,
+    lastMessage: previewText,
+    lastMessageDate: message?.createdAt || Math.floor(new Date().getTime() / 1000),
+    lastMessageSenderId: message?.senderID || '',
+    lastThreadMessageId: message?.id || '',
+    media: message?.media ?? null,
+    readUserIDs: [message?.senderID].filter(Boolean),
   }
 
-  await add(socialFeedsRef.doc(sender.id), 'chat_feed', data, true)
+  await add(
+    socialFeedsRef.doc(sender.id),
+    'chat_feed',
+    {
+      ...baseFeedData,
+      title: feedItemTitleForSender,
+      createdAt: baseFeedData.lastMessageDate,
+      markedAsRead: true,
+    },
+    true,
+  )
 
   let feedItemTitleForRecipients = channel?.name || ''
 
@@ -153,19 +192,18 @@ const hydrateChatFeedsForAllParticipants = async (
       return true
     }
 
-    const data2 = {
-      id: channelID,
-      title: feedItemTitleForRecipients,
-      content: message?.content ?? '',
-      media: message?.media ?? {},
-      markedAsRead: false,
-      createdAt: message?.createdAt,
-      participants,
-      creatorID: channel.creatorID,
-      admins: channel?.admins ?? [],
-    }
+    await add(
+      socialFeedsRef.doc(participantID),
+      'chat_feed',
+      {
+        ...baseFeedData,
+        title: feedItemTitleForRecipients,
+        createdAt: baseFeedData.lastMessageDate,
+        markedAsRead: false,
+      },
+      true,
+    )
 
-    await add(socialFeedsRef.doc(participantID), 'chat_feed', data2, true)
     return true
   })
 
@@ -186,17 +224,17 @@ const broadcastNotificationToAllParticipants = async (channelID, message) => {
     ? channel.participants.filter(participant => participant?.id)
     : []
 
-  const otherParticipants = participants?.filter(
-    participant => participant && participant.id != sender.id,
+  const otherParticipants = participants.filter(
+    participant => participant && participant.id !== sender.id,
   )
 
   const isGroupChat = channel.name && channel.name.length > 0
   const fromTitle = isGroupChat
     ? channel.name
     : `${sender.firstName || ''} ${sender.lastName || ''}`.trim()
-  const downloadObject = message.media
 
   let content = sender.firstName || 'Someone'
+  const downloadObject = message.media
 
   if (downloadObject) {
     if (downloadObject?.type?.includes('video')) {

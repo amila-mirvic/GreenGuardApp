@@ -8,7 +8,7 @@ import React, {
   memo,
 } from 'react'
 import { useDispatch } from 'react-redux'
-import { View, Text, Dimensions, Platform } from 'react-native'
+import { View, Dimensions, Platform } from 'react-native'
 import {
   useTheme,
   useTranslations,
@@ -28,6 +28,29 @@ import {
 import { storageAPI } from '../../media'
 import { useUserReportingMutations } from '../../user-reporting'
 import { formatMessage } from '../helpers/utils'
+import { emitConversationPatch } from '../chatRealtimeEvents'
+
+const getPreviewTextFromAnyValue = (value, localized) => {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim()
+  }
+
+  if (value && typeof value === 'object') {
+    if (typeof value?.content === 'string' && value.content.trim().length > 0) {
+      return value.content.trim()
+    }
+
+    const mediaType = value?.media?.type || value?.type
+    if (typeof mediaType === 'string') {
+      if (mediaType.includes('image')) return localized('Photo')
+      if (mediaType.includes('video')) return localized('Video')
+      if (mediaType.includes('audio')) return localized('Audio')
+      if (mediaType.includes('file')) return localized('File')
+    }
+  }
+
+  return ''
+}
 
 const IMChatScreen = memo(props => {
   const { localized } = useTranslations()
@@ -239,7 +262,6 @@ const IMChatScreen = memo(props => {
     if (!remoteChannel) {
       return
     }
-    console.log(`Remote channel changed`)
     const hydratedChannel = channelWithHydratedOtherParticipants(remoteChannel)
     setChannel(hydratedChannel)
     markThreadItemAsReadIfNeeded(hydratedChannel)
@@ -260,6 +282,32 @@ const IMChatScreen = memo(props => {
         participant => participant && participant.id !== currentUser.id,
       )
     return { ...channel, otherParticipants }
+  }
+
+  const emitLocalConversationPreviewPatch = (
+    patchedChannel,
+    previewText,
+    markedAsRead = true,
+  ) => {
+    const channelID = patchedChannel?.channelID || patchedChannel?.id
+    if (!channelID) {
+      return
+    }
+
+    const safePreviewText = getPreviewTextFromAnyValue(previewText, localized)
+    const now = Math.floor(new Date().getTime() / 1000)
+
+    emitConversationPatch({
+      ...patchedChannel,
+      id: channelID,
+      channelID,
+      content: safePreviewText,
+      lastMessage: safePreviewText,
+      lastMessageDate: now,
+      lastMessageSenderId: currentUser?.id,
+      markedAsRead,
+      createdAt: now,
+    })
   }
 
   const onGroupSettingsActionDone = useCallback(
@@ -499,6 +547,13 @@ const IMChatScreen = memo(props => {
         lastThreadMessageId,
         newReadUserIDs,
       )
+
+      emitConversationPatch({
+        ...channel,
+        id: channelID,
+        channelID,
+        markedAsRead: true,
+      })
     }
   }
 
@@ -527,13 +582,21 @@ const IMChatScreen = memo(props => {
 
   const onSendInput = async () => {
     if (!inputValue && !downloadObject) {
-      console.log('No message to be sent')
       return
     }
+
     let tempInputValue = inputValue
     if (!tempInputValue) {
       tempInputValue = formatMessage(downloadObject, localized)
     }
+
+    const previewText = getPreviewTextFromAnyValue(
+      {
+        content: tempInputValue,
+        media: downloadObject,
+      },
+      localized,
+    )
 
     const newMessage = optimisticSetMessage(
       currentUser,
@@ -541,34 +604,43 @@ const IMChatScreen = memo(props => {
       downloadObject,
       inReplyToItem,
     )
+
     richTextInputRef.current?.clear()
     setInputValue('')
     setInReplyToItem(null)
 
     if (channel?.lastMessageDate || channel?.otherParticipants?.length > 1) {
-      await sendMessage(newMessage, tempInputValue)
+      await sendMessage(newMessage, previewText, channel)
       return
     }
 
     const newChannel = await createOne2OneChannel()
     if (newChannel) {
-      await sendMessage(newMessage, tempInputValue, newChannel)
+      await sendMessage(newMessage, previewText, newChannel)
     }
     setLoading(false)
   }
 
   const sendMessage = async (
     newMessage,
-    tempInputValue,
+    previewText,
     newChannel = channel,
   ) => {
     const response = await sendMessageAPI(newMessage, newChannel)
     if (!response?.success || response?.error) {
       alert(response.error)
-      setInputValue(tempInputValue)
+      setInputValue(previewText)
       setInReplyToItem(newMessage.inReplyToItem)
     } else {
       setDownloadObject(null)
+      emitLocalConversationPreviewPatch(
+        newChannel,
+        {
+          content: previewText,
+          media: newMessage?.media,
+        },
+        true,
+      )
     }
   }
 
@@ -656,8 +728,6 @@ const IMChatScreen = memo(props => {
     setLoading(true)
     const { type } = uploadData
     if (!type) {
-      console.log("Can't upload file without type")
-      console.log(uploadData)
       alert(
         localized(
           `Can\'t upload file without a media type. Please report this error with the full error logs`,
@@ -806,6 +876,11 @@ const IMChatScreen = memo(props => {
       true,
     )
 
+    const forwardPreviewText = getPreviewTextFromAnyValue(
+      tempInputValue,
+      localized,
+    )
+
     if (hydrateChannel?.title) {
       const response = await sendMessageAPI(newMessage, hydrateChannel)
       if (response?.error) {
@@ -813,6 +888,14 @@ const IMChatScreen = memo(props => {
         return false
       } else {
         setInReplyToItem(null)
+        emitLocalConversationPreviewPatch(
+          hydrateChannel,
+          {
+            content: forwardPreviewText,
+            media: newMessage?.media,
+          },
+          true,
+        )
         return true
       }
     }
@@ -829,6 +912,14 @@ const IMChatScreen = memo(props => {
         return false
       } else {
         setInReplyToItem(null)
+        emitLocalConversationPreviewPatch(
+          newChannel,
+          {
+            content: forwardPreviewText,
+            media: newMessage?.media,
+          },
+          true,
+        )
         return true
       }
     }
