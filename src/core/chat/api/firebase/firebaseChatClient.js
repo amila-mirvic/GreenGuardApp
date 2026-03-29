@@ -1,6 +1,6 @@
 import { ChatFunctions, DocRef, channelsRef } from './chatRef'
 
-const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
+const DEFAULT_CALLABLE_TIMEOUT_MS = 30000
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
   let timeoutId
@@ -183,32 +183,13 @@ export const markUserAsTypingInChannel = async (channelID, userID) => {
 export const sendMessage = async (channel, newMessage) => {
   try {
     const channelID = channel?.id || channel?.channelID
-
-    if (!channelID) {
-      return { success: false, error: 'Missing channelID' }
-    }
-
-    const safeMessage = {
-      ...newMessage,
-      id: newMessage?.id || `${Date.now()}`,
-      content:
-        typeof newMessage?.content === 'string'
-          ? newMessage.content
-          : '',
-      createdAt:
-        typeof newMessage?.createdAt === 'number'
-          ? newMessage.createdAt
-          : Math.floor(Date.now() / 1000),
-    }
-
     const res = await withTimeout(
       ChatFunctions().insertMessage({
         channelID,
         channel,
-        message: safeMessage,
+        message: newMessage,
       }),
     )
-
     return res?.data ?? { success: true }
   } catch (error) {
     console.log('sendMessage error:', error)

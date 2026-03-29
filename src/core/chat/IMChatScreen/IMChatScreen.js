@@ -36,8 +36,9 @@ const IMChatScreen = memo(props => {
   const dispatch = useDispatch()
 
   const { navigation, route } = props
-  const openedFromPushNotification = route.params.openedFromPushNotification
-  const isChatUserItemPress = route.params.isChatUserItemPress
+  const openedFromPushNotification = route?.params?.openedFromPushNotification
+  const isChatUserItemPress = route?.params?.isChatUserItemPress
+  const routeChannel = route?.params?.channel
 
   const {
     messages,
@@ -60,6 +61,7 @@ const IMChatScreen = memo(props => {
   const [inReplyToItem, setInReplyToItem] = useState(null)
 
   const richTextInputRef = useRef()
+  const subscribeMessagesRef = useRef(null)
 
   const {
     createChannel,
@@ -68,13 +70,30 @@ const IMChatScreen = memo(props => {
     leaveGroup,
     deleteGroup,
   } = useChatChannels()
+
+  const isRealChannelObject = useCallback(obj => {
+    return Boolean(
+      obj &&
+        (obj?.channelID ||
+          (Array.isArray(obj?.participants) && obj.participants.length > 0) ||
+          obj?.creatorID ||
+          obj?.lastMessageDate),
+    )
+  }, [])
+
+  const realChannelArg = useMemo(() => {
+    if (isRealChannelObject(routeChannel)) {
+      return routeChannel
+    }
+    return null
+  }, [isRealChannelObject, routeChannel])
+
   const { remoteChannel, subscribeToSingleChannel } = useChatSingleChannel(
-    route.params.channel,
+    realChannelArg,
   )
 
   const { showActionSheetWithOptions } = useActionSheet()
   const { markAbuse } = useUserReportingMutations()
-  const subscribeMessagesRef = useRef(null)
 
   const photoUploadActionSheet = useMemo(() => {
     return {
@@ -132,47 +151,165 @@ const IMChatScreen = memo(props => {
     }
   }, [localized])
 
+  const buildDraftOneToOneChannel = useCallback(
+    userItem => {
+      if (!userItem || !currentUser?.id) {
+        return null
+      }
+
+      const targetUser =
+        userItem?.participants?.find(item => item?.id !== currentUser.id) || userItem
+
+      return {
+        id: null,
+        channelID: null,
+        participants: [currentUser, targetUser].filter(Boolean),
+        otherParticipants: [targetUser].filter(Boolean),
+        creatorID: currentUser.id,
+        name: '',
+        admins: null,
+        lastMessageDate: null,
+      }
+    },
+    [currentUser],
+  )
+
+  const channelWithHydratedOtherParticipants = useCallback(
+    passedChannel => {
+      if (!passedChannel) {
+        return null
+      }
+
+      const allParticipants = passedChannel?.participants
+
+      if (!Array.isArray(allParticipants) || allParticipants.length === 0) {
+        return buildDraftOneToOneChannel(passedChannel)
+      }
+
+      const otherParticipants = allParticipants.filter(
+        participant => participant && participant.id !== currentUser.id,
+      )
+
+      return { ...passedChannel, otherParticipants }
+    },
+    [buildDraftOneToOneChannel, currentUser.id],
+  )
+
+  const configureNavigation = useCallback(
+    passedChannel => {
+      if (!passedChannel) {
+        return
+      }
+
+      let title = passedChannel?.name
+      const isGroupChat = passedChannel?.participants?.length > 2
+
+      if (!title) {
+        const otherUser =
+          passedChannel?.otherParticipants?.[0] ||
+          passedChannel?.participants?.find(
+            participant => participant.id !== currentUser.id,
+          ) ||
+          passedChannel
+
+        title =
+          otherUser?.fullName ||
+          `${otherUser?.firstName ?? ''} ${otherUser?.lastName ?? ''}`.trim()
+      }
+
+      navigation.setOptions({
+        headerTitle: title || route?.params?.title || localized('Chat'),
+        headerStyle: {
+          backgroundColor: theme.colors[appearance].primaryBackground,
+        },
+        headerBackTitleVisible: false,
+        headerTitleStyle:
+          isGroupChat && Platform.OS !== 'web'
+            ? {
+                width: Dimensions.get('window').width - 110,
+              }
+            : null,
+        headerTintColor: theme.colors[appearance].primaryText,
+        headerRight: () => (
+          <View style={{ flexDirection: 'row' }}>
+            <IconButton
+              source={require('../assets/settings-icon.png')}
+              tintColor={theme.colors[appearance].primaryForeground}
+              onPress={onSettingsPress}
+              marginRight={15}
+              width={20}
+              height={20}
+            />
+          </View>
+        ),
+      })
+    },
+    [appearance, currentUser.id, localized, navigation, route?.params?.title, theme.colors],
+  )
+
   useLayoutEffect(() => {
     if (!openedFromPushNotification) {
-      configureNavigation(
-        channelWithHydratedOtherParticipants(route.params.channel),
-      )
+      configureNavigation(channelWithHydratedOtherParticipants(routeChannel))
     } else {
       navigation.setOptions({ headerTitle: '' })
     }
-  }, [navigation, route.params.channel])
+  }, [channelWithHydratedOtherParticipants, configureNavigation, navigation, openedFromPushNotification, routeChannel])
 
   useEffect(() => {
     configureNavigation(remoteChannel || channel)
-  }, [channel, remoteChannel])
+  }, [channel, configureNavigation, remoteChannel])
 
   useEffect(() => {
-    if (selectedMediaIndex !== -1) {
-      setIsMediaViewerOpen(true)
-    } else {
-      setIsMediaViewerOpen(false)
-    }
+    setIsMediaViewerOpen(selectedMediaIndex !== -1)
   }, [selectedMediaIndex])
 
   useEffect(() => {
-    const hydratedChannel = channelWithHydratedOtherParticipants(
-      route.params.channel,
-    )
+    const hydratedChannel = channelWithHydratedOtherParticipants(routeChannel)
     if (!hydratedChannel) {
       return
     }
 
-    const channelID = hydratedChannel?.channelID || hydratedChannel?.id
-
     setChannel(hydratedChannel)
-    subscribeMessagesRef.current = subscribeToMessages(channelID)
-    const unsubscribe = subscribeToSingleChannel(channelID)
+
+    // BITNO: subscribujemo samo ako je stvarni channel, ne user item
+    const realChannelID =
+      isRealChannelObject(hydratedChannel)
+        ? hydratedChannel?.channelID || hydratedChannel?.id
+        : null
+
+    if (!realChannelID) {
+      return
+    }
+
+    subscribeMessagesRef.current && subscribeMessagesRef.current()
+    subscribeMessagesRef.current = subscribeToMessages(realChannelID)
+    const unsubscribeSingle = subscribeToSingleChannel(realChannelID)
 
     return () => {
       subscribeMessagesRef.current && subscribeMessagesRef.current()
-      unsubscribe && unsubscribe()
+      unsubscribeSingle && unsubscribeSingle()
     }
-  }, [currentUser?.id, route.params.channel])
+  }, [
+    channelWithHydratedOtherParticipants,
+    currentUser?.id,
+    isRealChannelObject,
+    routeChannel,
+    subscribeToMessages,
+    subscribeToSingleChannel,
+  ])
+
+  useEffect(() => {
+    if (!remoteChannel) {
+      return
+    }
+    const hydratedChannel = channelWithHydratedOtherParticipants(remoteChannel)
+    setChannel(hydratedChannel)
+    markThreadItemAsReadIfNeeded(hydratedChannel)
+
+    if (openedFromPushNotification) {
+      configureNavigation(hydratedChannel)
+    }
+  }, [channelWithHydratedOtherParticipants, configureNavigation, openedFromPushNotification, remoteChannel])
 
   useEffect(() => {
     if (downloadObject !== null) {
@@ -201,78 +338,48 @@ const IMChatScreen = memo(props => {
   }
 
   const onListEndReached = useCallback(() => {
-    const channelID =
-      route?.params?.channel?.id || route?.params?.channel?.channelID
-    loadMoreMessages(channelID)
-  }, [loadMoreMessages, route?.params?.channel])
-
-  const configureNavigation = passedChannel => {
-    if (!passedChannel) {
-      return
+    const channelID = channel?.id || channel?.channelID
+    if (channelID) {
+      loadMoreMessages(channelID)
     }
+  }, [channel, loadMoreMessages])
 
-    let title = passedChannel?.name
-    const isGroupChat = passedChannel?.participants?.length > 2
-    if (!title && passedChannel?.participants?.length > 1) {
-      const otherUser = passedChannel.participants.find(
-        participant => participant.id !== currentUser.id,
+  const onViewMembers = useCallback(
+    passedChannel => {
+      navigation.navigate('ViewGroupMembers', {
+        channel: passedChannel,
+      })
+    },
+    [navigation],
+  )
+
+  const showRenameDialog = useCallback(shouldShow => {
+    setIsRenameDialogVisible(shouldShow)
+  }, [])
+
+  const onLeave = useCallback(
+    async passedChannel => {
+      const channelID = passedChannel?.channelID || passedChannel?.id
+      if (!channelID) return
+      await leaveGroup(
+        channelID,
+        currentUser.id,
+        `${currentUser.firstName} left this group.`,
       )
-      title =
-        otherUser?.fullName ||
-        `${otherUser?.firstName ?? ''} ${otherUser?.lastName ?? ''}`.trim()
-    }
+      navigation.goBack()
+    },
+    [currentUser, leaveGroup, navigation],
+  )
 
-    navigation.setOptions({
-      headerTitle: title || route.params.title || localized('Chat'),
-      headerStyle: {
-        backgroundColor: theme.colors[appearance].primaryBackground,
-      },
-      headerBackTitleVisible: false,
-      headerTitleStyle:
-        isGroupChat && Platform.OS !== 'web'
-          ? {
-              width: Dimensions.get('window').width - 110,
-            }
-          : null,
-      headerTintColor: theme.colors[appearance].primaryText,
-      headerRight: () => (
-        <View style={{ flexDirection: 'row' }}>
-          <IconButton
-            source={require('../assets/settings-icon.png')}
-            tintColor={theme.colors[appearance].primaryForeground}
-            onPress={onSettingsPress}
-            marginRight={15}
-            width={20}
-            height={20}
-          />
-        </View>
-      ),
-    })
-  }
-
-  useEffect(() => {
-    if (!remoteChannel) {
-      return
-    }
-    const hydratedChannel = channelWithHydratedOtherParticipants(remoteChannel)
-    setChannel(hydratedChannel)
-    markThreadItemAsReadIfNeeded(hydratedChannel)
-
-    if (openedFromPushNotification) {
-      configureNavigation(hydratedChannel)
-    }
-  }, [remoteChannel])
-
-  const channelWithHydratedOtherParticipants = passedChannel => {
-    const allParticipants = passedChannel?.participants
-    if (!allParticipants) {
-      return passedChannel
-    }
-    const otherParticipants = allParticipants.filter(
-      participant => participant && participant.id !== currentUser.id,
-    )
-    return { ...passedChannel, otherParticipants }
-  }
+  const onDeleteGroup = useCallback(
+    async passedChannel => {
+      const channelID = passedChannel?.channelID || passedChannel?.id
+      if (!channelID) return
+      await deleteGroup(channelID)
+      navigation.goBack()
+    },
+    [deleteGroup, navigation],
+  )
 
   const onGroupSettingsActionDone = useCallback(
     (index, passedChannel) => {
@@ -300,6 +407,43 @@ const IMChatScreen = memo(props => {
       }
     },
     [onDeleteGroup, onLeave, onViewMembers, showRenameDialog],
+  )
+
+  const reportAbuse = useCallback(
+    async (passedChannel, type) => {
+      try {
+        setLoading(true)
+        const myID = currentUser.id
+        const otherUser = passedChannel?.participants?.find(
+          participant => participant.id !== myID,
+        )
+        const otherUserID = otherUser?.id
+
+        const response = await markAbuse(myID, otherUserID, type)
+        setLoading(false)
+        if (!response?.error) {
+          navigation.goBack(null)
+        }
+      } catch (error) {
+        setLoading(false)
+        console.log('reportAbuse error:', error)
+      }
+    },
+    [currentUser.id, markAbuse, navigation],
+  )
+
+  const onUserBlockPress = useCallback(
+    passedChannel => {
+      reportAbuse(passedChannel, 'block')
+    },
+    [reportAbuse],
+  )
+
+  const onUserReportPress = useCallback(
+    passedChannel => {
+      reportAbuse(passedChannel, 'report')
+    },
+    [reportAbuse],
   )
 
   const onPrivateSettingsActionDone = useCallback(
@@ -336,6 +480,7 @@ const IMChatScreen = memo(props => {
 
   const onSettingsPress = useCallback(() => {
     const targetChannel = remoteChannel || channel
+    if (!targetChannel) return
 
     if (targetChannel?.admins && targetChannel?.admins?.includes(currentUser?.id)) {
       showActionSheetWithOptions(
@@ -380,143 +525,111 @@ const IMChatScreen = memo(props => {
     showActionSheetWithOptions,
   ])
 
-  const showRenameDialog = useCallback(
-    shouldShow => {
-      setIsRenameDialogVisible(shouldShow)
-    },
-    [setIsRenameDialogVisible],
-  )
-
-  const onViewMembers = useCallback(
-    passedChannel => {
-      navigation.navigate('ViewGroupMembers', {
-        channel: passedChannel,
-      })
-    },
-    [navigation],
-  )
-
   const onChangeName = useCallback(
     async newText => {
-      const channelID = channel?.id || channel?.channelID
-      await updateGroup(channelID, currentUser.id, {
+      const channelID = channel?.channelID || channel?.id
+      if (!channelID) return
+      setIsRenameDialogVisible(false)
+      const data = {
+        ...channel,
         name: newText,
-      })
-      showRenameDialog(false)
+        content: `${currentUser?.firstName ?? 'Someone'} has renamed the group.`,
+      }
+      await updateGroup(channelID, currentUser.id, data)
     },
-    [channel, currentUser?.id, showRenameDialog, updateGroup],
+    [channel, currentUser, updateGroup],
   )
 
-  const onLeave = useCallback(
-    async passedChannel => {
-      const channelID = passedChannel?.id || passedChannel?.channelID
-      await leaveGroup(
+  const markThreadItemAsReadIfNeeded = useCallback(
+    passedChannel => {
+      const {
+        id,
         channelID,
-        currentUser.id,
-        `${currentUser.firstName} left this group.`,
-      )
-      navigation.goBack()
-    },
-    [currentUser, leaveGroup, navigation],
-  )
-
-  const onDeleteGroup = useCallback(
-    async passedChannel => {
-      const channelID = passedChannel?.id || passedChannel?.channelID
-      await deleteGroup(channelID)
-      navigation.goBack()
-    },
-    [deleteGroup, navigation],
-  )
-
-  const markThreadItemAsReadIfNeeded = passedChannel => {
-    const {
-      id: channelID,
-      channelID: fallbackChannelID,
-      lastThreadMessageId,
-      readUserIDs,
-      lastMessage,
-    } = passedChannel || {}
-
-    const userID = currentUser?.id
-    const safeReadUserIDs = Array.isArray(readUserIDs) ? readUserIDs : []
-    const isRead = safeReadUserIDs.includes(userID)
-    const resolvedChannelID = channelID || fallbackChannelID
-
-    if (!isRead && resolvedChannelID && lastMessage && userID) {
-      const newReadUserIDs = [...safeReadUserIDs, userID]
-      markChannelMessageAsRead(
-        resolvedChannelID,
-        userID,
         lastThreadMessageId,
-        newReadUserIDs,
-      )
-    }
-  }
+        readUserIDs,
+        lastMessage,
+      } = passedChannel || {}
+
+      const userID = currentUser?.id
+      const resolvedChannelID = id || channelID
+      const nextReadUserIDs = Array.isArray(readUserIDs)
+        ? [...readUserIDs, userID].filter(Boolean)
+        : [userID].filter(Boolean)
+
+      if (
+        resolvedChannelID &&
+        userID &&
+        lastMessage &&
+        !readUserIDs?.includes?.(userID)
+      ) {
+        markChannelMessageAsRead(
+          resolvedChannelID,
+          userID,
+          lastThreadMessageId,
+          nextReadUserIDs,
+        )
+      }
+    },
+    [currentUser?.id, markChannelMessageAsRead],
+  )
 
   const onChangeTextInput = useCallback(text => {
     setInputValue(text)
   }, [])
 
-  const createOne2OneChannel = async () => {
+  const createOne2OneChannel = useCallback(async () => {
+    const sourceChannel = channelWithHydratedOtherParticipants(channel || routeChannel)
     const response = await createChannel(
       currentUser,
-      channelWithHydratedOtherParticipants(channel)?.otherParticipants,
+      sourceChannel?.otherParticipants,
     )
 
     if (response) {
-      const newHydratedChannel = channelWithHydratedOtherParticipants(response)
-      const newChannelID =
-        newHydratedChannel?.channelID || newHydratedChannel?.id
+      const hydrated = channelWithHydratedOtherParticipants(response)
+      const newChannelID = hydrated?.channelID || hydrated?.id
 
-      setChannel(newHydratedChannel)
+      setChannel(hydrated)
 
-      subscribeMessagesRef.current && subscribeMessagesRef.current()
-      subscribeMessagesRef.current = subscribeToMessages(newChannelID)
+      if (newChannelID) {
+        subscribeMessagesRef.current && subscribeMessagesRef.current()
+        subscribeMessagesRef.current = subscribeToMessages(newChannelID)
+      }
 
-      return newHydratedChannel
+      return hydrated
     }
 
     return null
-  }
+  }, [channel, channelWithHydratedOtherParticipants, createChannel, currentUser, routeChannel, subscribeToMessages])
 
-  const onSendInput = async () => {
-    const textValue = normalizeInputToString(inputValue)
-
-    if (!textValue && !downloadObject) {
-      return
-    }
-
-    let finalContent = textValue
-
-    if (!finalContent && downloadObject) {
-      finalContent = formatMessage(downloadObject, localized)
-    }
-
-    if (!finalContent && !downloadObject) {
-      return
-    }
-
-    let targetChannel = channel
-    const currentChannelID = channel?.channelID || channel?.id
-
-    if (!currentChannelID) {
-      targetChannel = await createOne2OneChannel()
-      if (!targetChannel) {
-        return
+  const sendPersistedMessage = useCallback(
+    async (newMessage, tempInputValue, targetChannel = channel) => {
+      const response = await sendMessageAPI(newMessage, targetChannel)
+      if (response?.error) {
+        Alert.alert(localized('Error'), localized('Message failed to send'))
+        setInputValue(tempInputValue)
+        setInReplyToItem(newMessage?.inReplyToItem || null)
+        return false
       }
+
+      setDownloadObject(null)
+      return true
+    },
+    [channel, localized, sendMessageAPI],
+  )
+
+  const onSendInput = useCallback(async () => {
+    if (!inputValue && !downloadObject) {
+      return
     }
 
-    const safePayload = {
-      id: `${currentUser.id}_${Date.now()}`,
-      content: finalContent || '',
-      createdAt: Math.floor(Date.now() / 1000),
-      senderID: currentUser.id,
+    let tempInputValue = normalizeInputToString(inputValue)
+    if (!tempInputValue) {
+      tempInputValue = formatMessage(downloadObject, localized)
     }
 
     const newMessage = optimisticSetMessage(
       currentUser,
-      safePayload,
+      tempInputValue,
       downloadObject,
       inReplyToItem,
     )
@@ -525,23 +638,32 @@ const IMChatScreen = memo(props => {
     setInputValue('')
     setInReplyToItem(null)
 
-    try {
-      const response = await sendMessageAPI(newMessage, targetChannel)
+    const hasExistingConversation = Boolean(
+      channel?.lastMessageDate || channel?.otherParticipants?.length > 1,
+    )
 
-      if (response?.error) {
-        throw new Error(
-          typeof response.error === 'string'
-            ? response.error
-            : response.error?.message || 'Message failed to send',
-        )
-      }
+    if (hasExistingConversation && (channel?.id || channel?.channelID)) {
+      await sendPersistedMessage(newMessage, tempInputValue, channel)
+      return
+    }
 
-      setDownloadObject(null)
-    } catch (err) {
-      console.log('SEND MESSAGE ERROR:', err)
+    const newChannel = await createOne2OneChannel()
+    if (newChannel) {
+      await sendPersistedMessage(newMessage, tempInputValue, newChannel)
+    } else {
       Alert.alert(localized('Error'), localized('Message failed to send'))
     }
-  }
+  }, [
+    channel,
+    createOne2OneChannel,
+    currentUser,
+    downloadObject,
+    inReplyToItem,
+    inputValue,
+    localized,
+    optimisticSetMessage,
+    sendPersistedMessage,
+  ])
 
   const onPhotoUploadDialogDone = useCallback(
     index => {
@@ -553,7 +675,7 @@ const IMChatScreen = memo(props => {
         onOpenPhotos()
       }
     },
-    [onLaunchCamera, onOpenPhotos],
+    [],
   )
 
   const onAddMediaPress = useCallback(() => {
@@ -565,11 +687,47 @@ const IMChatScreen = memo(props => {
       },
       onPhotoUploadDialogDone,
     )
-  }, [
-    onPhotoUploadDialogDone,
-    photoUploadActionSheet,
-    showActionSheetWithOptions,
-  ])
+  }, [onPhotoUploadDialogDone, photoUploadActionSheet, showActionSheetWithOptions])
+
+  const startUpload = useCallback(
+    async uploadData => {
+      try {
+        setLoading(true)
+        const { type } = uploadData
+        if (!type) {
+          Alert.alert(
+            localized('Error'),
+            localized(
+              "Can't upload file without a media type. Please report this error with the full error logs",
+            ),
+          )
+          setLoading(false)
+          return
+        }
+
+        const { downloadURL, thumbnailURL } =
+          await storageAPI.processAndUploadMediaFile(uploadData)
+
+        if (downloadURL) {
+          setDownloadObject({
+            ...uploadData,
+            source: downloadURL,
+            uri: downloadURL,
+            url: downloadURL,
+            urlKey: '',
+            type,
+            thumbnailURL,
+            thumbnailKey: '',
+          })
+        }
+        setLoading(false)
+      } catch (error) {
+        setLoading(false)
+        console.log('startUpload error:', error)
+      }
+    },
+    [localized],
+  )
 
   const onAudioRecordSend = useCallback(
     audioRecord => {
@@ -598,8 +756,8 @@ const IMChatScreen = memo(props => {
       .then(result => {
         if (result.canceled !== true) {
           const image = result.assets[0]
-          let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i
-          let match = pattern.exec(image.uri)
+          const pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i
+          const match = pattern.exec(image.uri)
           startUpload({ type: (match ?? [])[0], ...image })
         }
       })
@@ -622,38 +780,6 @@ const IMChatScreen = memo(props => {
       console.warn(e)
     }
   }, [startUpload])
-
-  const startUpload = async uploadData => {
-    setLoading(true)
-    const { type } = uploadData
-    if (!type) {
-      console.log("Can't upload file without type")
-      console.log(uploadData)
-      Alert.alert(
-        localized('Error'),
-        localized(
-          "Can't upload file without a media type. Please report this error with the full error logs",
-        ),
-      )
-      setLoading(false)
-      return
-    }
-    const { downloadURL, thumbnailURL } =
-      await storageAPI.processAndUploadMediaFile(uploadData)
-    if (downloadURL) {
-      setDownloadObject({
-        ...uploadData,
-        source: downloadURL,
-        uri: downloadURL,
-        url: downloadURL,
-        urlKey: '',
-        type,
-        thumbnailURL,
-        thumbnailKey: '',
-      })
-    }
-    setLoading(false)
-  }
 
   const images = useMemo(() => {
     const list = []
@@ -688,35 +814,6 @@ const IMChatScreen = memo(props => {
   const onMediaClose = useCallback(() => {
     setSelectedMediaIndex(-1)
   }, [])
-
-  const reportAbuse = async (passedChannel, type) => {
-    setLoading(true)
-    const myID = currentUser.id
-    const otherUser = passedChannel.participants.find(
-      participant => participant.id !== myID,
-    )
-    const otherUserID = otherUser?.id
-
-    const response = await markAbuse(myID, otherUserID, type)
-    setLoading(false)
-    if (!response?.error) {
-      navigation.goBack(null)
-    }
-  }
-
-  const onUserBlockPress = useCallback(
-    passedChannel => {
-      reportAbuse(passedChannel, 'block')
-    },
-    [currentUser?.id],
-  )
-
-  const onUserReportPress = useCallback(
-    passedChannel => {
-      reportAbuse(passedChannel, 'report')
-    },
-    [currentUser?.id],
-  )
 
   const onReplyActionPress = useCallback(replyItem => {
     setInReplyToItem(replyItem)
@@ -767,11 +864,8 @@ const IMChatScreen = memo(props => {
 
   const onForwardMessageActionPress = useCallback(
     async (targetChannel, message) => {
-      const messageText =
-        typeof message?.content === 'string' ? message.content : ''
-      const tempInputValue = { content: messageText }
-
-      let hydrateChannel = channelWithHydratedOtherParticipants(targetChannel)
+      const tempInputValue = { content: message?.content || '' }
+      const hydrateChannel = channelWithHydratedOtherParticipants(targetChannel)
 
       const newMessage = getMessageObject(
         currentUser,
@@ -805,10 +899,11 @@ const IMChatScreen = memo(props => {
         setInReplyToItem(null)
         return true
       }
+
       setInReplyToItem(null)
       return false
     },
-    [channel, createChannel, currentUser, getMessageObject, localized, sendMessageAPI],
+    [channelWithHydratedOtherParticipants, createChannel, currentUser, getMessageObject, localized, sendMessageAPI],
   )
 
   return (
@@ -831,7 +926,7 @@ const IMChatScreen = memo(props => {
       onChatMediaPress={onChatMediaPress}
       onMediaClose={onMediaClose}
       isRenameDialogVisible={isRenameDialogVisible}
-      showRenameDialog={showRenameDialog}
+      showRenameDialog={setIsRenameDialogVisible}
       onViewMembers={onViewMembers}
       onChangeName={onChangeName}
       onLeave={onLeave}

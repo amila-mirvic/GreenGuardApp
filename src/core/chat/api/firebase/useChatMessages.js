@@ -9,56 +9,6 @@ import { useReactions } from './useReactions'
 import { hydrateMessagesWithMyReactions, getMessageObject } from '../utils'
 import { useCurrentUser } from '../../../onboarding'
 
-const normalizeCreatedAt = value => {
-  if (typeof value === 'number') return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    return Number.isNaN(parsed) ? 0 : parsed
-  }
-  if (value?.seconds) return value.seconds
-  if (typeof value?.toDate === 'function') {
-    return Math.floor(value.toDate().getTime() / 1000)
-  }
-  return 0
-}
-
-const normalizeMessagePayload = rawMessage => {
-  if (!rawMessage) {
-    return {
-      id: `${Date.now()}`,
-      content: '',
-      createdAt: Math.floor(Date.now() / 1000),
-    }
-  }
-
-  if (typeof rawMessage === 'string') {
-    return {
-      id: `${Date.now()}`,
-      content: rawMessage,
-      createdAt: Math.floor(Date.now() / 1000),
-    }
-  }
-
-  const content =
-    typeof rawMessage?.content === 'string'
-      ? rawMessage.content
-      : typeof rawMessage?.text === 'string'
-      ? rawMessage.text
-      : typeof rawMessage?.displayText === 'string'
-      ? rawMessage.displayText
-      : ''
-
-  return {
-    ...rawMessage,
-    id: rawMessage?.id || `${Date.now()}`,
-    content,
-    createdAt:
-      typeof rawMessage?.createdAt === 'number'
-        ? rawMessage.createdAt
-        : Math.floor(Date.now() / 1000),
-  }
-}
-
 export const useChatMessages = () => {
   const [messages, setMessages] = useState(null)
 
@@ -76,38 +26,31 @@ export const useChatMessages = () => {
       return
     }
 
-    try {
-      const newMessages = await listMessagesAPI(
-        channelID,
-        pagination.current.page,
-        pagination.current.size,
-      )
+    const newMessages = await listMessagesAPI(
+      channelID,
+      pagination.current.page,
+      pagination.current.size,
+    )
 
-      if (!newMessages?.length) {
-        pagination.current.exhausted = true
-        return
-      }
-
-      pagination.current.page += 1
-
-      setMessages(prevMessages =>
-        hydrateMessagesWithMyReactions(
-          deduplicatedMessages(prevMessages, newMessages, true),
-          currentUser?.id,
-        ),
-      )
-    } catch (error) {
-      console.log('loadMoreMessages error:', error)
+    if (!newMessages?.length) {
+      pagination.current.exhausted = true
+      return
     }
+
+    pagination.current.page += 1
+
+    setMessages(prevMessages =>
+      hydrateMessagesWithMyReactions(
+        deduplicatedMessages(prevMessages, newMessages, true),
+        currentUser?.id,
+      ),
+    )
   }
 
   const subscribeToMessages = channelID => {
     if (!channelID) {
-      setMessages([])
-      return () => {}
+      return null
     }
-
-    pagination.current = { page: 0, size: 25, exhausted: false }
 
     return subscribeMessagesAPI(channelID, newMessages => {
       setMessages(prevMessages =>
@@ -120,43 +63,20 @@ export const useChatMessages = () => {
   }
 
   const optimisticSetMessage = (sender, message, media, inReplyToItem) => {
-    const safeMessage = normalizeMessagePayload(message)
-
-    const newMessage = getMessageObject(
-      sender,
-      safeMessage,
-      media,
-      inReplyToItem,
-    )
-
-    const normalizedNewMessage = {
-      ...newMessage,
-      id: newMessage?.id || safeMessage.id || `${Date.now()}`,
-      content:
-        typeof newMessage?.content === 'string'
-          ? newMessage.content
-          : safeMessage.content || '',
-      createdAt:
-        typeof newMessage?.createdAt === 'number'
-          ? newMessage.createdAt
-          : safeMessage.createdAt || Math.floor(Date.now() / 1000),
-      senderID: newMessage?.senderID || sender?.id,
-    }
+    const newMessage = getMessageObject(sender, message, media, inReplyToItem)
 
     setMessages(prevMessages =>
       hydrateMessagesWithMyReactions(
-        deduplicatedMessages(prevMessages, [normalizedNewMessage], false),
+        deduplicatedMessages(prevMessages, [newMessage], false),
         currentUser?.id,
       ),
     )
 
-    return normalizedNewMessage
+    return newMessage
   }
 
   const sendMessage = async (newMessage, channel) => {
-    const safeMessage = normalizeMessagePayload(newMessage)
-
-    return sendMessageAPI(channel, safeMessage)
+    return sendMessageAPI(channel, newMessage)
   }
 
   const deleteMessage = async (channel, threadItemID) => {
@@ -181,8 +101,8 @@ export const useChatMessages = () => {
     }, [])
 
     return deduped.sort((a, b) => {
-      const aTime = normalizeCreatedAt(a?.createdAt)
-      const bTime = normalizeCreatedAt(b?.createdAt)
+      const aTime = Number(a?.createdAt || 0)
+      const bTime = Number(b?.createdAt || 0)
       return bTime - aTime
     })
   }

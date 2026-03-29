@@ -30,7 +30,14 @@ const SinglePostScreen = props => {
   const { addComment } = useCommentMutations()
   const { markAbuse } = useUserReportingMutations()
 
-  const { comments, commentsLoading, subscribeToComments } = useComments()
+  const {
+    comments,
+    commentsLoading,
+    subscribeToComments,
+    prependComment,
+    refreshComments,
+  } = useComments()
+
   const { remotePost, subscribeToPost, addReaction } = usePost()
 
   const [feedItem, setFeedItem] = useState(item)
@@ -54,13 +61,14 @@ const SinglePostScreen = props => {
     if (!item?.id) {
       return
     }
+
     const postUnsubscribe = subscribeToPost(item.id, currentUser?.id)
-    const commentsUnsubscribe = subscribeToComments(item.id)
+    subscribeToComments(item.id)
+
     return () => {
       postUnsubscribe && postUnsubscribe()
-      commentsUnsubscribe && commentsUnsubscribe()
     }
-  }, [item?.id, currentUser?.id, subscribeToPost, subscribeToComments])
+  }, [item?.id, currentUser?.id])
 
   useEffect(() => {
     if (remotePost) {
@@ -75,14 +83,20 @@ const SinglePostScreen = props => {
         return
       }
 
+      const createdComment = await addComment(trimmedText, feedItem.id, currentUser.id)
+
       setFeedItem(prev => ({
         ...prev,
         commentCount: Number(prev?.commentCount || 0) + 1,
       }))
 
-      await addComment(trimmedText, feedItem.id, currentUser.id)
+      if (createdComment) {
+        prependComment(createdComment)
+      }
+
+      refreshComments(feedItem.id)
     },
-    [addComment, currentUser?.id, feedItem?.id],
+    [addComment, currentUser?.id, feedItem?.id, prependComment, refreshComments],
   )
 
   const onReaction = useCallback(

@@ -1,7 +1,7 @@
 import firestore from '@react-native-firebase/firestore'
 import { DocRef, FeedFunctions, postsRef } from './feedRef'
 
-const DEFAULT_CALLABLE_TIMEOUT_MS = 15000
+const DEFAULT_CALLABLE_TIMEOUT_MS = 30000
 const usersRef = firestore().collection('users')
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
@@ -19,36 +19,6 @@ const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => 
     if (timeoutId) {
       clearTimeout(timeoutId)
     }
-  }
-}
-
-const normalizeCreatedAt = value => {
-  if (typeof value === 'number') return value
-  if (typeof value === 'string') {
-    const n = Number(value)
-    return Number.isNaN(n) ? 0 : n
-  }
-  if (value?.seconds) return value.seconds
-  if (typeof value?.toDate === 'function') {
-    return Math.floor(value.toDate().getTime() / 1000)
-  }
-  return 0
-}
-
-const normalizeItem = (docOrData, fallbackID = null) => {
-  if (!docOrData) return null
-
-  if (typeof docOrData.data === 'function') {
-    const data = docOrData.data()
-    return {
-      id: data?.id || docOrData.id || fallbackID,
-      ...data,
-    }
-  }
-
-  return {
-    id: docOrData?.id || fallbackID,
-    ...docOrData,
   }
 }
 
@@ -112,16 +82,13 @@ export const subscribeToHomeFeedPosts = (userID, callback) => {
   return DocRef(userID)
     .homeFeedLive
     .orderBy('createdAt', 'desc')
-    .onSnapshot(
-      { includeMetadataChanges: true },
-      querySnapshot => {
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
-      },
-      error => {
-        console.log(error)
+    .onSnapshot(querySnapshot => {
+      if (!querySnapshot || !querySnapshot.docs) {
         callback && callback([])
-      },
-    )
+      } else {
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+      }
+    })
 }
 
 export const listHomeFeedPosts = async (userID, page = 0, size = 1000) => {
@@ -145,16 +112,13 @@ export const subscribeToStories = (userID, callback) => {
   return DocRef(userID)
     .storiesFeedLive
     .orderBy('createdAt', 'desc')
-    .onSnapshot(
-      { includeMetadataChanges: true },
-      querySnapshot => {
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
-      },
-      error => {
-        console.log(error)
+    .onSnapshot(querySnapshot => {
+      if (!querySnapshot || !querySnapshot.docs) {
         callback && callback([])
-      },
-    )
+      } else {
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+      }
+    })
 }
 
 export const listStories = async (userID, page = 0, size = 1000) => {
@@ -193,11 +157,13 @@ export const addReaction = async (postID, authorID, reaction) => {
 export const addComment = async (commentText, postID, authorID) => {
   const instance = FeedFunctions().addComment
   try {
-    const res = await instance({
-      authorID,
-      commentText,
-      postID,
-    })
+    const res = await withTimeout(
+      instance({
+        authorID,
+        commentText,
+        postID,
+      }),
+    )
     return res?.data
   } catch (error) {
     console.log(error)
@@ -205,52 +171,33 @@ export const addComment = async (commentText, postID, authorID) => {
   }
 }
 
-export const subscribeToComments = (postID, callback) => {
-  if (!postID) {
-    callback && callback([])
-    return () => {}
-  }
-
-  return postsRef
-    .doc(postID)
-    .collection('comments')
-    .orderBy('createdAt', 'desc')
-    .onSnapshot(
-      { includeMetadataChanges: true },
-      querySnapshot => {
-        const items = querySnapshot?.docs?.map(doc => {
-          const data = doc.data()
-          return {
-            id: data?.id || doc.id,
-            ...data,
-          }
-        }) ?? []
-
-        callback && callback(items)
-      },
-      error => {
-        console.log('subscribeToComments error:', error)
-        callback && callback([])
-      },
-    )
+export const subscribeToComments = () => {
+  return () => {}
 }
 
-export const listComments = async () => {
-  return []
+export const listComments = async (postID, page = 0, size = 1000) => {
+  const instance = FeedFunctions().listComments
+  try {
+    const res = await withTimeout(
+      instance({
+        postID,
+        page,
+        size,
+      }),
+    )
+    return res?.data?.comments ?? []
+  } catch (error) {
+    console.log('listComments error:', error)
+    return []
+  }
 }
 
 export const subscribeToSinglePost = (postID, callback) => {
-  return DocRef(postID).post.onSnapshot(
-    { includeMetadataChanges: true },
-    doc => {
-      if (doc?.exists) {
-        callback && callback(doc.data())
-      }
-    },
-    error => {
-      console.log(error)
-    },
-  )
+  return DocRef(postID).post.onSnapshot(doc => {
+    if (doc?.exists) {
+      callback && callback(doc.data())
+    }
+  })
 }
 
 export const listDiscoverFeedPosts = async (userID, page = 0, size = 1000) => {
@@ -275,16 +222,13 @@ export const subscribeToHashtagFeedPosts = (hashtag, callback) => {
   return DocRef(hashtag)
     .hashtag
     .orderBy('createdAt', 'desc')
-    .onSnapshot(
-      { includeMetadataChanges: true },
-      querySnapshot => {
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
-      },
-      error => {
-        console.log(error)
+    .onSnapshot(querySnapshot => {
+      if (!querySnapshot || !querySnapshot.docs) {
         callback && callback([])
-      },
-    )
+      } else {
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+      }
+    })
 }
 
 export const listHashtagFeedPosts = async (
@@ -315,40 +259,13 @@ export const subscribeToProfileFeedPosts = (userID, callback) => {
   return DocRef(userID)
     .profileFeedLive
     .orderBy('createdAt', 'desc')
-    .onSnapshot(
-      { includeMetadataChanges: true },
-      querySnapshot => {
-        callback && callback(querySnapshot?.docs?.map(doc => doc.data()) ?? [])
-      },
-      error => {
-        console.log(error)
+    .onSnapshot(querySnapshot => {
+      if (!querySnapshot || !querySnapshot.docs) {
         callback && callback([])
-      },
-    )
-}
-
-export const listCanonicalPostsByAuthor = async (
-  userID,
-  page = 0,
-  size = 25,
-) => {
-  try {
-    const snapshot = await postsRef.where('authorID', '==', userID).get()
-
-    const posts = snapshot?.docs?.map(doc => doc.data()) ?? []
-
-    const sorted = posts.sort(
-      (a, b) => normalizeCreatedAt(b?.createdAt) - normalizeCreatedAt(a?.createdAt),
-    )
-
-    const start = page * size
-    const end = start + size
-
-    return sorted.slice(start, end)
-  } catch (error) {
-    console.log('listCanonicalPostsByAuthor error:', error)
-    return []
-  }
+      } else {
+        callback && callback(querySnapshot?.docs?.map(doc => doc.data()))
+      }
+    })
 }
 
 export const listProfileFeed = async (userID, page = 0, size = 1000) => {
@@ -362,16 +279,10 @@ export const listProfileFeed = async (userID, page = 0, size = 1000) => {
       }),
     )
 
-    const posts = res?.data?.posts ?? []
-
-    if (posts.length === 0) {
-      return await listCanonicalPostsByAuthor(userID, page, size)
-    }
-
-    return posts
+    return res?.data?.posts ?? []
   } catch (error) {
     console.log(error)
-    return await listCanonicalPostsByAuthor(userID, page, size)
+    return []
   }
 }
 
