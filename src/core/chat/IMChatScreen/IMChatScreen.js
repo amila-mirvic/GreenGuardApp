@@ -260,16 +260,38 @@ const IMChatScreen = memo(props => {
   }, [remoteChannel])
 
   const channelWithHydratedOtherParticipants = channel => {
-    const allParticipants = channel?.participants
-    if (!allParticipants) {
+    if (!channel) {
       return channel
     }
-    const otherParticipants =
-      allParticipants &&
-      allParticipants.filter(
-        participant => participant && participant.id !== currentUser.id,
-      )
-    return { ...channel, otherParticipants }
+
+    const allParticipants = Array.isArray(channel?.participants)
+      ? channel.participants
+          .map(participant => {
+            if (!participant) {
+              return null
+            }
+            const participantID = participant?.id || participant?.userID
+            if (!participantID) {
+              return null
+            }
+            return participant?.id
+              ? participant
+              : { ...participant, id: participantID }
+          })
+          .filter(Boolean)
+      : []
+
+    const otherParticipants = allParticipants.filter(
+      participant => participant && participant.id !== currentUser.id,
+    )
+
+    return {
+      ...channel,
+      id: channel?.id || channel?.channelID,
+      channelID: channel?.channelID || channel?.id,
+      participants: allParticipants,
+      otherParticipants,
+    }
   }
 
   const onGroupSettingsActionDone = useCallback(
@@ -489,7 +511,12 @@ const IMChatScreen = memo(props => {
     setInputValue('')
     setInReplyToItem(null)
 
-    const hasRemoteChannel = Boolean(remoteChannel?.id || remoteChannel?.channelID)
+    const hasRemoteChannel = Boolean(
+      (remoteChannel?.id || remoteChannel?.channelID) &&
+        (remoteChannel?.creatorID ||
+          remoteChannel?.lastMessageDate ||
+          (Array.isArray(remoteChannel?.admins) && remoteChannel.admins.length > 0)),
+    )
     const isGroupChannel = Array.isArray(channel?.admins) && channel.admins.length > 0
 
     if (hasRemoteChannel || isGroupChannel) {

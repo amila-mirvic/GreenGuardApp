@@ -1,19 +1,52 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { subscribeToSingleChannel as subscribeToSingleChannelAPI } from './firebaseChatClient'
 
-const isRealChannelObject = channel => {
+const normalizeParticipant = participant => {
+  if (!participant) {
+    return null
+  }
+
+  const participantID = participant?.id || participant?.userID
+  if (!participantID) {
+    return null
+  }
+
+  return participant?.id ? participant : { ...participant, id: participantID }
+}
+
+const normalizeChannel = channel => {
+  if (!channel) {
+    return null
+  }
+
+  const participants = Array.isArray(channel?.participants)
+    ? channel.participants.map(normalizeParticipant).filter(Boolean)
+    : []
+
+  return {
+    ...channel,
+    id: channel?.id || channel?.channelID,
+    channelID: channel?.channelID || channel?.id,
+    participants,
+  }
+}
+
+const isPersistedChannelObject = channel => {
   return Boolean(
     channel &&
-      (channel?.channelID ||
-        (Array.isArray(channel?.participants) && channel.participants.length > 0) ||
-        channel?.creatorID ||
-        channel?.lastMessageDate),
+      (channel?.creatorID ||
+        channel?.lastMessageDate ||
+        (Array.isArray(channel?.admins) && channel.admins.length > 0)),
   )
 }
 
 export const useChatSingleChannel = initialChannel => {
+  const normalizedInitialChannel = normalizeChannel(initialChannel)
+
   const [remoteChannel, setRemoteChannel] = useState(
-    isRealChannelObject(initialChannel) ? initialChannel : null,
+    isPersistedChannelObject(normalizedInitialChannel)
+      ? normalizedInitialChannel
+      : null,
   )
 
   const unsubscribeRef = useRef(null)
@@ -29,10 +62,12 @@ export const useChatSingleChannel = initialChannel => {
     channelInput => {
       cleanup()
 
-      const channelID =
+      const normalizedInput =
         typeof channelInput === 'string'
-          ? channelInput
-          : channelInput?.channelID || channelInput?.id
+          ? { id: channelInput, channelID: channelInput, participants: [] }
+          : normalizeChannel(channelInput)
+
+      const channelID = normalizedInput?.channelID || normalizedInput?.id
 
       if (!channelID) {
         setRemoteChannel(null)
@@ -40,7 +75,7 @@ export const useChatSingleChannel = initialChannel => {
       }
 
       unsubscribeRef.current = subscribeToSingleChannelAPI(channelID, channel => {
-        setRemoteChannel(channel || null)
+        setRemoteChannel(normalizeChannel(channel))
       })
 
       return () => {
@@ -53,21 +88,25 @@ export const useChatSingleChannel = initialChannel => {
   useEffect(() => {
     cleanup()
 
-    if (!isRealChannelObject(initialChannel)) {
+    if (
+      !normalizedInitialChannel ||
+      !isPersistedChannelObject(normalizedInitialChannel)
+    ) {
       setRemoteChannel(null)
       return () => {}
     }
 
-    const channelID = initialChannel?.channelID || initialChannel?.id
+    const channelID =
+      normalizedInitialChannel?.channelID || normalizedInitialChannel?.id
     if (!channelID) {
-      setRemoteChannel(initialChannel)
+      setRemoteChannel(normalizedInitialChannel)
       return () => {}
     }
 
-    setRemoteChannel(initialChannel)
+    setRemoteChannel(normalizedInitialChannel)
 
     unsubscribeRef.current = subscribeToSingleChannelAPI(channelID, channel => {
-      setRemoteChannel(channel || null)
+      setRemoteChannel(normalizeChannel(channel))
     })
 
     return () => {

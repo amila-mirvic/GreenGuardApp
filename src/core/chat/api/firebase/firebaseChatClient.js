@@ -20,9 +20,22 @@ const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => 
   }
 }
 
+const normalizeParticipant = participant => {
+  if (!participant) {
+    return null
+  }
+
+  const participantID = participant?.id || participant?.userID
+  if (!participantID) {
+    return null
+  }
+
+  return participant?.id ? participant : { ...participant, id: participantID }
+}
+
 const dedupeParticipants = participants => {
   const safeParticipants = Array.isArray(participants)
-    ? participants.filter(Boolean)
+    ? participants.map(normalizeParticipant).filter(Boolean)
     : []
 
   return safeParticipants.reduce((acc, participant) => {
@@ -77,7 +90,20 @@ export const subscribeChannels = (userID, callback) => {
     .onSnapshot(
       { includeMetadataChanges: true },
       snapshot => {
-        const items = snapshot?.docs?.map(doc => doc.data()) ?? []
+        const items =
+          snapshot?.docs?.map(doc => {
+            const data = doc.data()
+            const participants = Array.isArray(data?.participants)
+              ? data.participants.map(normalizeParticipant).filter(Boolean)
+              : []
+
+            return {
+              ...data,
+              id: data?.id || doc.id,
+              channelID: data?.channelID || data?.id || doc.id,
+              participants,
+            }
+          }) ?? []
         callback && callback(items)
       },
       error => {
@@ -96,7 +122,23 @@ export const subscribeToSingleChannel = (channelID, callback) => {
   return channelsRef.doc(channelID).onSnapshot(
     { includeMetadataChanges: true },
     doc => {
-      callback && callback(doc?.exists ? doc.data() : null)
+      if (!doc?.exists) {
+        callback && callback(null)
+        return
+      }
+
+      const data = doc.data()
+      const participants = Array.isArray(data?.participants)
+        ? data.participants.map(normalizeParticipant).filter(Boolean)
+        : []
+
+      callback &&
+        callback({
+          ...data,
+          id: data?.id || doc.id,
+          channelID: data?.channelID || data?.id || doc.id,
+          participants,
+        })
     },
     error => {
       console.log('subscribeToSingleChannel error:', error)
@@ -247,7 +289,11 @@ export const subscribeToMessages = (channelID, callback) => {
     .onSnapshot(
       { includeMetadataChanges: true },
       snapshot => {
-        const items = snapshot?.docs?.map(doc => doc.data()) ?? []
+        const items =
+          snapshot?.docs?.map(doc => ({
+            ...doc.data(),
+            id: doc.data()?.id || doc.id,
+          })) ?? []
         callback && callback(items)
       },
       error => {

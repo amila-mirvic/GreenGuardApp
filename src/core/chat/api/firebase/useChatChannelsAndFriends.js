@@ -3,23 +3,56 @@ import { useChatChannels } from './useChatChannels'
 import { useSocialGraphFriends } from '../../../socialgraph/friendships'
 import { useCurrentUser } from '../../../onboarding'
 
+const normalizeParticipant = participant => {
+  if (!participant) {
+    return null
+  }
+
+  const participantID = participant?.id || participant?.userID
+  if (!participantID) {
+    return null
+  }
+
+  return participant?.id ? participant : { ...participant, id: participantID }
+}
+
+const normalizeChannelLikeItem = item => {
+  if (!item) {
+    return null
+  }
+
+  const participants = Array.isArray(item?.participants)
+    ? item.participants.map(normalizeParticipant).filter(Boolean)
+    : []
+
+  return {
+    ...item,
+    id: item?.id || item?.channelID,
+    channelID: item?.channelID || item?.id,
+    participants,
+  }
+}
+
 const buildDirectChannelID = (id1, id2) => {
   if (!id1 || !id2) return ''
   return id1 < id2 ? `${id1}${id2}` : `${id2}${id1}`
 }
 
 const getConversationKey = (item, currentUserID) => {
-  if (!item) {
+  const normalizedItem = normalizeChannelLikeItem(item)
+
+  if (!normalizedItem) {
     return ''
   }
 
-  const participants = Array.isArray(item?.participants)
-    ? item.participants.filter(Boolean)
-    : []
+  const participants = normalizedItem.participants
 
-  const isGroupChat = Array.isArray(item?.admins) && item.admins.length > 0
+  const isGroupChat =
+    (Array.isArray(normalizedItem?.admins) && normalizedItem.admins.length > 0) ||
+    participants.length > 2
+
   if (isGroupChat) {
-    return item?.id || item?.channelID || ''
+    return normalizedItem?.id || normalizedItem?.channelID || ''
   }
 
   const otherParticipant = participants.find(
@@ -30,7 +63,7 @@ const getConversationKey = (item, currentUserID) => {
     return `direct_${otherParticipant.id}`
   }
 
-  return item?.id || item?.channelID || ''
+  return normalizedItem?.id || normalizedItem?.channelID || ''
 }
 
 const getConversationScore = item => {
@@ -50,6 +83,10 @@ const getConversationScore = item => {
 
   if (item?.createdAt) {
     score += 10
+  }
+
+  if (item?.creatorID) {
+    score += 5
   }
 
   if (Array.isArray(item?.admins) && item.admins.length > 0) {
@@ -95,9 +132,14 @@ export const useChatChannelsAndFriends = () => {
   }, [currentUser?.id])
 
   const mergedList = useMemo(() => {
-    const safeChannels = Array.isArray(channels) ? channels.filter(Boolean) : []
-    const safeFriends = Array.isArray(friends) ? friends.filter(Boolean) : []
-    const currentUserID = currentUser?.id || currentUser?.userID
+    const safeChannels = Array.isArray(channels)
+      ? channels.map(normalizeChannelLikeItem).filter(Boolean)
+      : []
+    const safeFriends = Array.isArray(friends)
+      ? friends.map(normalizeParticipant).filter(Boolean)
+      : []
+    const normalizedCurrentUser = normalizeParticipant(currentUser)
+    const currentUserID = normalizedCurrentUser?.id || normalizedCurrentUser?.userID
 
     const all = [...safeChannels]
 
@@ -113,7 +155,7 @@ export const useChatChannelsAndFriends = () => {
       all.push({
         id: channelID,
         channelID,
-        participants: [currentUser, friend],
+        participants: [normalizedCurrentUser, friend].filter(Boolean),
         title:
           `${friend?.firstName || ''} ${friend?.lastName || ''}`.trim() ||
           friend?.username ||
@@ -123,19 +165,13 @@ export const useChatChannelsAndFriends = () => {
     })
 
     const reduced = all.reduce((acc, curr) => {
-      const conversationKey = getConversationKey(curr, currentUserID)
-      const fallbackKey = curr?.id || curr?.channelID
+      const normalizedItem = normalizeChannelLikeItem(curr)
+      const conversationKey = getConversationKey(normalizedItem, currentUserID)
+      const fallbackKey = normalizedItem?.id || normalizedItem?.channelID
       const storageKey = conversationKey || fallbackKey
 
       if (!storageKey) {
         return acc
-      }
-
-      const normalizedItem = {
-        ...curr,
-        id: curr?.id || curr?.channelID || fallbackKey,
-        channelID: curr?.channelID || curr?.id || fallbackKey,
-        participants: Array.isArray(curr?.participants) ? curr.participants : [],
       }
 
       const existing = acc.get(storageKey)

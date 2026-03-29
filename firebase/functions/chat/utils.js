@@ -12,8 +12,21 @@ const collectionsUtils = require('../core/collections')
 const { sendPushNotification } = require('../notifications/utils')
 const { add } = collectionsUtils
 
+const normalizeParticipant = participant => {
+  if (!participant) {
+    return null
+  }
+
+  const participantID = participant.id || participant.userID
+  if (!participantID) {
+    return null
+  }
+
+  return participant.id ? participant : { ...participant, id: participantID }
+}
+
 const isValidParticipant = participant => {
-  return Boolean(participant && participant.id)
+  return Boolean(normalizeParticipant(participant))
 }
 
 const ensureChannelDocumentExists = async (channelID, channelPayload, message) => {
@@ -25,7 +38,7 @@ const ensureChannelDocumentExists = async (channelID, channelPayload, message) =
   }
 
   const participants = Array.isArray(channelPayload?.participants)
-    ? channelPayload.participants.filter(isValidParticipant)
+    ? channelPayload.participants.map(normalizeParticipant).filter(Boolean)
     : []
 
   if (!participants.length) {
@@ -65,7 +78,16 @@ exports.createChannel = async data => {
     return channel.data()
   }
 
-  await chatChannelsRef.doc(id).set(data)
+  const normalizedParticipants = Array.isArray(data?.participants)
+    ? data.participants.map(normalizeParticipant).filter(Boolean)
+    : []
+
+  const normalizedChannelData = {
+    ...data,
+    participants: normalizedParticipants,
+  }
+
+  await chatChannelsRef.doc(id).set(normalizedChannelData)
 
   await hydrateChatFeedsForAllParticipants(
     id,
@@ -77,7 +99,7 @@ exports.createChannel = async data => {
     true,
   )
 
-  return data
+  return normalizedChannelData
 }
 
 exports.insertMessage = async data => {
@@ -149,7 +171,7 @@ const hydrateChatFeedsForAllParticipants = async (
   console.log(JSON.stringify(sender))
 
   const participants = Array.isArray(channel?.participants)
-    ? channel.participants.filter(isValidParticipant)
+    ? channel.participants.map(normalizeParticipant).filter(Boolean)
     : []
 
   if (!participants.length) {
@@ -227,7 +249,7 @@ const broadcastNotificationToAllParticipants = async (channelID, message) => {
   }
 
   const participants = Array.isArray(channel?.participants)
-    ? channel.participants.filter(isValidParticipant)
+    ? channel.participants.map(normalizeParticipant).filter(Boolean)
     : []
 
   const otherParticipants = participants.filter(
