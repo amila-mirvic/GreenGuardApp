@@ -16,11 +16,11 @@ const dynamicStyles = (theme, appearance, outBound) => {
   const storyReactionStickerSize = Math.floor(WINDOW_WIDTH * 0.1)
 
   return StyleSheet.create({
-    safeAreaViewContainer: {
-      backgroundColor: chatBackgroundColor,
-      flex: 1,
-      marginBottom: 5,
-    },
+safeAreaViewContainer: {
+  backgroundColor: chatBackgroundColor,
+  flex: 1,
+  marginBottom: Platform.OS === 'android' ? 10 : 5,
+},
     personalChatContainer: {
       backgroundColor: chatBackgroundColor,
       flex: 1,
@@ -28,8 +28,8 @@ const dynamicStyles = (theme, appearance, outBound) => {
     //Bottom Input
 bottomContentContainer: {
   backgroundColor: chatBackgroundColor,
-  marginBottom: Platform.OS === 'android' ? 28 : 16,
-  paddingBottom: Platform.OS === 'android' ? 10 : 0,
+  marginBottom: Platform.OS === 'android' ? 44 : 16,
+  paddingBottom: Platform.OS === 'android' ? 16 : 0,
 },
     inputContainer: {
       flex: 8,
@@ -56,7 +56,7 @@ bottomContentContainer: {
     },
 inputBar: {
   justifyContent: 'center',
-  paddingBottom: Platform.OS === 'android' ? 6 : 0,
+  paddingBottom: Platform.OS === 'android' ? 10 : 0,
   alignItems: 'center',
   borderTopWidth: 1,
   borderTopColor: colorSet.hairline,

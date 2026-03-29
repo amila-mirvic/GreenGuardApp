@@ -1,9 +1,58 @@
-import React, { memo, useCallback, useEffect } from 'react'
+import React, { memo, useCallback, useEffect, useMemo } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 import { useCurrentUser } from '../../onboarding'
 import { useChatChannels, useChatChannelsAndFriends } from '../api'
 import IMConversationList from '../IMConversationList'
 import { useTheme } from '../../dopebase'
+
+const getItemID = item => item?.id || item?.channelID
+const getItemTimestamp = item =>
+  item?.updatedAt || item?.lastMessageDate || item?.createdAt || 0
+
+const getItemRichnessScore = item => {
+  if (!item) return 0
+
+  let score = 0
+
+  if (Array.isArray(item?.participants) && item.participants.length > 0) score += 1
+  if (typeof item?.title === 'string' && item.title.trim().length > 0) score += 1
+  if (typeof item?.name === 'string' && item.name.trim().length > 0) score += 1
+  if (typeof item?.content === 'string' && item.content.trim().length > 0) score += 3
+  if (typeof item?.lastMessage === 'string' && item.lastMessage.trim().length > 0)
+    score += 4
+  if (item?.media) score += 2
+  if (typeof item?.markedAsRead === 'boolean') score += 3
+  if (item?.lastMessageDate) score += 4
+  if (item?.createdAt) score += 1
+
+  return score
+}
+
+const mergeItemsPreferRicher = (existingItem, incomingItem) => {
+  if (!existingItem) return incomingItem
+  if (!incomingItem) return existingItem
+
+  const existingScore = getItemRichnessScore(existingItem)
+  const incomingScore = getItemRichnessScore(incomingItem)
+
+  const base =
+    incomingScore >= existingScore ? incomingItem : existingItem
+
+  const secondary =
+    incomingScore >= existingScore ? existingItem : incomingItem
+
+  return {
+    ...secondary,
+    ...base,
+    id: getItemID(base) || getItemID(secondary),
+    channelID: getItemID(base) || getItemID(secondary),
+    participants: Array.isArray(base?.participants)
+      ? base.participants
+      : Array.isArray(secondary?.participants)
+      ? secondary.participants
+      : [],
+  }
+}
 
 const IMConversationListView = memo(props => {
   const { navigation, headerComponent, emptyStateConfig } = props
@@ -53,6 +102,38 @@ const IMConversationListView = memo(props => {
     loadMoreChannels(currentUser.id)
   }, [currentUser?.id])
 
+  const safeConversationList = useMemo(() => {
+    const safeChannels = Array.isArray(channels) ? channels.filter(Boolean) : []
+    const safeHydrated = Array.isArray(hydratedListWithChannelsAndFriends)
+      ? hydratedListWithChannelsAndFriends.filter(Boolean)
+      : []
+
+    const byID = new Map()
+
+    ;[...safeChannels, ...safeHydrated].forEach(item => {
+      const itemID = getItemID(item)
+      if (!itemID) {
+        return
+      }
+
+      const normalizedItem = {
+        ...item,
+        id: itemID,
+        channelID: itemID,
+        participants: Array.isArray(item?.participants)
+          ? item.participants
+          : [],
+      }
+
+      const existing = byID.get(itemID)
+      byID.set(itemID, mergeItemsPreferRicher(existing, normalizedItem))
+    })
+
+    return Array.from(byID.values()).sort(
+      (a, b) => getItemTimestamp(b) - getItemTimestamp(a),
+    )
+  }, [channels, hydratedListWithChannelsAndFriends])
+
   if (!currentUser) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -60,12 +141,6 @@ const IMConversationListView = memo(props => {
       </View>
     )
   }
-
-  const safeConversationList =
-    Array.isArray(hydratedListWithChannelsAndFriends) &&
-    hydratedListWithChannelsAndFriends.length > 0
-      ? hydratedListWithChannelsAndFriends
-      : channels || []
 
   return (
     <IMConversationList
