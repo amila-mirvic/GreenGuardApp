@@ -26,10 +26,11 @@ const dynamicStyles = (theme, appearance, outBound) => {
       flex: 1,
     },
     //Bottom Input
-    bottomContentContainer: {
-      backgroundColor: chatBackgroundColor,
-      marginBottom: 16,
-    },
+bottomContentContainer: {
+  backgroundColor: chatBackgroundColor,
+  marginBottom: Platform.OS === 'android' ? 28 : 16,
+  paddingBottom: Platform.OS === 'android' ? 10 : 0,
+},
     inputContainer: {
       flex: 8,
       borderRadius: 20,
@@ -53,14 +54,15 @@ const dynamicStyles = (theme, appearance, outBound) => {
       }),
       flexDirection: 'row',
     },
-    inputBar: {
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderTopWidth: 1,
-      borderTopColor: colorSet.hairline,
-      backgroundColor: colorSet.primaryBackground,
-      flexDirection: 'row',
-    },
+inputBar: {
+  justifyContent: 'center',
+  paddingBottom: Platform.OS === 'android' ? 6 : 0,
+  alignItems: 'center',
+  borderTopWidth: 1,
+  borderTopColor: colorSet.hairline,
+  backgroundColor: colorSet.primaryBackground,
+  flexDirection: 'row',
+},
     inputIconContainer: {
       margin: 10,
       flex: 0.5,

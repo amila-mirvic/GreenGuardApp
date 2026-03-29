@@ -1,6 +1,6 @@
 import { ChatFunctions, DocRef, channelsRef } from './chatRef'
 
-const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
+const DEFAULT_CALLABLE_TIMEOUT_MS = 30000
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
   let timeoutId
@@ -38,7 +38,9 @@ const dedupeParticipants = participants => {
 
 const buildChannelPayload = (creator, otherParticipants, name, isAdmin = false) => {
   const participants = dedupeParticipants([creator, ...(otherParticipants || [])])
-  const isGroupChat = Boolean(isAdmin || (name && name.trim().length > 0) || participants.length > 2)
+  const isGroupChat = Boolean(
+    isAdmin || (name && name.trim().length > 0) || participants.length > 2,
+  )
 
   let channelID = ''
 
@@ -265,13 +267,13 @@ export const leaveGroup = async (channelID, userID, content) => {
   }
 }
 
-export const updateGroup = async (channelID, userID, channelData) => {
+export const updateGroup = async (channelID, userID, data) => {
   try {
     const res = await withTimeout(
       ChatFunctions().updateGroup({
         channelID,
         userID,
-        channelData,
+        ...data,
       }),
     )
     return res?.data ?? { success: true }

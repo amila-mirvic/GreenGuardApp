@@ -167,6 +167,7 @@ const IMChatScreen = memo(props => {
 
     setChannel(hydratedChannel)
     subscribeMessagesRef.current = subscribeToMessages(channelID)
+    loadMoreMessages(channelID)
     const unsubscribe = subscribeToSingleChannel(channelID)
 
     return () => {
@@ -177,14 +178,18 @@ const IMChatScreen = memo(props => {
 
   useEffect(() => {
     if (downloadObject !== null) {
-      // We've just finished the photo upload, so we send the message out
       onSendInput()
     }
   }, [downloadObject])
 
   const onListEndReached = useCallback(() => {
-    loadMoreMessages(route?.params?.channel?.id)
-  }, [loadMoreMessages, route?.params?.channel?.id])
+    const channelID =
+      channel?.channelID || channel?.id || route?.params?.channel?.id
+    if (!channelID) {
+      return
+    }
+    loadMoreMessages(channelID)
+  }, [channel?.channelID, channel?.id, loadMoreMessages, route?.params?.channel?.id])
 
   const configureNavigation = channel => {
     if (!channel) {
@@ -235,12 +240,10 @@ const IMChatScreen = memo(props => {
       return
     }
     console.log(`Remote channel changed`)
-    // We have a hydrated channel, so we replace the partial channel we have on the state
     const hydratedChannel = channelWithHydratedOtherParticipants(remoteChannel)
     setChannel(hydratedChannel)
     markThreadItemAsReadIfNeeded(hydratedChannel)
 
-    // We have a hydrated channel, so we update the title of the screen
     if (openedFromPushNotification) {
       configureNavigation(hydratedChannel)
     }
@@ -251,7 +254,6 @@ const IMChatScreen = memo(props => {
     if (!allParticipants) {
       return channel
     }
-    // otherParticipants are all the participants in the chat, except for the currently logged in user
     const otherParticipants =
       allParticipants &&
       allParticipants.filter(
@@ -259,7 +261,6 @@ const IMChatScreen = memo(props => {
       )
     return { ...channel, otherParticipants }
   }
-
 
   const onGroupSettingsActionDone = useCallback(
     (index, passedChannel) => {
@@ -478,32 +479,28 @@ const IMChatScreen = memo(props => {
     [setIsRenameDialogVisible],
   )
 
-
-
-const markThreadItemAsReadIfNeeded = channel => {
-  const {
-    id: channelID,
-    lastThreadMessageId,
-    readUserIDs,
-    lastMessage,
-  } = channel || {}
-
-  const userID = currentUser?.id
-  const safeReadUserIDs = Array.isArray(readUserIDs) ? readUserIDs : []
-  const isRead = safeReadUserIDs.includes(userID)
-
-  if (!isRead && channelID && lastMessage && userID) {
-    const newReadUserIDs = [...safeReadUserIDs, userID]
-    markChannelMessageAsRead(
-      channelID,
-      userID,
+  const markThreadItemAsReadIfNeeded = channel => {
+    const {
+      id: channelID,
       lastThreadMessageId,
-      newReadUserIDs,
-    )
+      readUserIDs,
+      lastMessage,
+    } = channel || {}
+
+    const userID = currentUser?.id
+    const safeReadUserIDs = Array.isArray(readUserIDs) ? readUserIDs : []
+    const isRead = safeReadUserIDs.includes(userID)
+
+    if (!isRead && channelID && lastMessage && userID) {
+      const newReadUserIDs = [...safeReadUserIDs, userID]
+      markChannelMessageAsRead(
+        channelID,
+        userID,
+        lastThreadMessageId,
+        newReadUserIDs,
+      )
+    }
   }
-}
-
-
 
   const onChangeTextInput = useCallback(
     text => {
@@ -518,11 +515,12 @@ const markThreadItemAsReadIfNeeded = channel => {
       channelWithHydratedOtherParticipants(channel)?.otherParticipants,
     )
     if (response) {
-      const channelID = channel?.channelID || channel?.id
+      const channelID = response?.channelID || response?.id
 
       setChannel(channelWithHydratedOtherParticipants(response))
       subscribeMessagesRef.current && subscribeMessagesRef.current()
       subscribeMessagesRef.current = subscribeToMessages(channelID)
+      loadMoreMessages(channelID)
     }
     return response
   }
@@ -552,7 +550,6 @@ const markThreadItemAsReadIfNeeded = channel => {
       return
     }
 
-    // If we don't have a chat message, we need to create a 1-1 channel first
     const newChannel = await createOne2OneChannel()
     if (newChannel) {
       await sendMessage(newMessage, tempInputValue, newChannel)
@@ -566,7 +563,7 @@ const markThreadItemAsReadIfNeeded = channel => {
     newChannel = channel,
   ) => {
     const response = await sendMessageAPI(newMessage, newChannel)
-    if (response?.error) {
+    if (!response?.success || response?.error) {
       alert(response.error)
       setInputValue(tempInputValue)
       setInReplyToItem(newMessage.inReplyToItem)
@@ -574,6 +571,7 @@ const markThreadItemAsReadIfNeeded = channel => {
       setDownloadObject(null)
     }
   }
+
   const onPhotoUploadDialogDone = useCallback(
     index => {
       if (index === 0) {
@@ -629,7 +627,7 @@ const markThreadItemAsReadIfNeeded = channel => {
       .then(result => {
         if (result.canceled !== true) {
           const image = result.assets[0]
-          let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i // match pattern eg: image/jpeg
+          let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i
           let match = pattern.exec(image.uri)
           startUpload({ type: (match ?? [])[0], ...image })
         }
@@ -819,7 +817,6 @@ const markThreadItemAsReadIfNeeded = channel => {
       }
     }
 
-    // If we don't have a chat message, we need to create a 1-1 channel first
     const newChannel = await createChannel(
       currentUser,
       channelWithHydratedOtherParticipants(channel)?.otherParticipants,

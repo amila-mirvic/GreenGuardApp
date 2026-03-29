@@ -2,6 +2,24 @@ const Constants = {
   liveCollectionCountLimit: 50,
 }
 
+const normalizeDocs = snapshot => snapshot?.docs?.map(doc => doc.data()) ?? []
+
+const buildQuery = (collectionRef, sortedByDate = false, limit = null, offset = null) => {
+  let query = sortedByDate
+    ? collectionRef.orderBy('createdAt', 'desc')
+    : collectionRef.orderBy('__name__')
+
+  if (typeof offset === 'number' && offset > 0) {
+    query = query.offset(offset)
+  }
+
+  if (typeof limit === 'number' && limit > 0) {
+    query = query.limit(limit)
+  }
+
+  return query
+}
+
 exports.getList = async (
   docRef,
   collectionName,
@@ -10,38 +28,35 @@ exports.getList = async (
   sortedByDate = false,
 ) => {
   const liveCollection = docRef.collection(`${collectionName}_live`)
-  const historicalCollection = docRef.collection(
-    `${collectionName}_historical`,
-  )
+  const historicalCollection = docRef.collection(`${collectionName}_historical`)
 
   if (page === -1) {
-    const snapshot = sortedByDate
-      ? await liveCollection.orderBy('createdAt', 'desc').get()
-      : await liveCollection.get()
-
-    return snapshot?.docs?.map(doc => doc.data()) ?? []
+    const snapshot = await buildQuery(liveCollection, sortedByDate).get()
+    return normalizeDocs(snapshot)
   }
 
   if (page === 0) {
-    const liveSnapshot = sortedByDate
-      ? await liveCollection.orderBy('createdAt', 'desc').get()
-      : await liveCollection.get()
+    const fetchLimit =
+      typeof limit === 'number' && limit > 0
+        ? limit
+        : Constants.liveCollectionCountLimit
 
-    const liveItems = liveSnapshot?.docs?.map(doc => doc.data()) ?? []
+    const [liveSnapshot, historicalSnapshot] = await Promise.all([
+      buildQuery(liveCollection, sortedByDate, fetchLimit).get(),
+      buildQuery(historicalCollection, sortedByDate, fetchLimit).get(),
+    ])
+
+    const liveItems = normalizeDocs(liveSnapshot)
     const liveIDs = new Set(liveItems.map(item => item?.id).filter(Boolean))
-
-    const historicalSnapshot = sortedByDate
-      ? await historicalCollection.orderBy('createdAt', 'desc').get()
-      : await historicalCollection.get()
-
-    const historicalItemsRaw =
-      historicalSnapshot?.docs?.map(doc => doc.data()) ?? []
-
-    const historicalItems = historicalItemsRaw.filter(
+    const historicalItems = normalizeDocs(historicalSnapshot).filter(
       item => item?.id && !liveIDs.has(item.id),
     )
 
     const combined = [...liveItems, ...historicalItems]
+
+    if (sortedByDate) {
+      combined.sort((a, b) => (b?.createdAt || 0) - (a?.createdAt || 0))
+    }
 
     return typeof limit === 'number' && limit > 0
       ? combined.slice(0, limit)
@@ -51,16 +66,14 @@ exports.getList = async (
   const historicalOffset = page * limit - limit
   const safeOffset = Math.max(0, historicalOffset)
 
-  const historicalQuery =
-    sortedByDate === false
-      ? historicalCollection.offset(safeOffset).limit(limit)
-      : historicalCollection
-          .orderBy('createdAt', 'desc')
-          .offset(safeOffset)
-          .limit(limit)
+  const snapshot = await buildQuery(
+    historicalCollection,
+    sortedByDate,
+    limit,
+    safeOffset,
+  ).get()
 
-  const snapshot = await historicalQuery.get()
-  return snapshot?.docs?.map(doc => doc.data()) ?? []
+  return normalizeDocs(snapshot)
 }
 
 exports.add = async (docRef, collectionName, data, sortedByDate = false) => {
