@@ -511,16 +511,32 @@ const IMChatScreen = memo(props => {
     setInputValue('')
     setInReplyToItem(null)
 
-    const hasRemoteChannel = Boolean(
-      (remoteChannel?.id || remoteChannel?.channelID) &&
-        (remoteChannel?.creatorID ||
-          remoteChannel?.lastMessageDate ||
-          (Array.isArray(remoteChannel?.admins) && remoteChannel.admins.length > 0)),
+    const hydratedRemoteChannel = channelWithHydratedOtherParticipants(
+      remoteChannel,
     )
-    const isGroupChannel = Array.isArray(channel?.admins) && channel.admins.length > 0
+    const hydratedLocalChannel = channelWithHydratedOtherParticipants(channel)
 
-    if (hasRemoteChannel || isGroupChannel) {
-      await sendMessage(newMessage, tempInputValue, remoteChannel || channel)
+    const hasRemoteChannel = Boolean(
+      (hydratedRemoteChannel?.id || hydratedRemoteChannel?.channelID) &&
+        (hydratedRemoteChannel?.creatorID ||
+          hydratedRemoteChannel?.lastMessageDate ||
+          (Array.isArray(hydratedRemoteChannel?.admins) &&
+            hydratedRemoteChannel.admins.length > 0)),
+    )
+    const hasLocalPersistedChannel = Boolean(
+      (hydratedLocalChannel?.id || hydratedLocalChannel?.channelID) &&
+        (hydratedLocalChannel?.creatorID ||
+          hydratedLocalChannel?.lastMessageDate ||
+          (Array.isArray(hydratedLocalChannel?.admins) &&
+            hydratedLocalChannel.admins.length > 0)),
+    )
+
+    if (hasRemoteChannel || hasLocalPersistedChannel) {
+      await sendMessage(
+        newMessage,
+        tempInputValue,
+        hydratedRemoteChannel || hydratedLocalChannel,
+      )
       return
     }
 

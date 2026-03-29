@@ -45,11 +45,23 @@ export const getMessageObject = (
   const { profilePictureURL, profilePictureKey } = sender
   const userID = sender.id
   const timestamp = getUnixTimeStamp()
-
   const messageID = uuid()
 
+  const safeMessageObject =
+    message && typeof message === 'object' && !Array.isArray(message)
+      ? message
+      : {}
+
+  const content =
+    typeof message === 'string'
+      ? message
+      : typeof message?.content === 'string'
+        ? message.content
+        : ''
+
   return {
-    ...message,
+    ...safeMessageObject,
+    content,
     id: messageID,
     createdAt: timestamp,
     senderFirstName: sender.firstName || sender.fullname,

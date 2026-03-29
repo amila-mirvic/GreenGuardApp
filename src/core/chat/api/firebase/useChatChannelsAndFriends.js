@@ -132,6 +132,9 @@ export const useChatChannelsAndFriends = () => {
   }, [currentUser?.id])
 
   const mergedList = useMemo(() => {
+    if (channels === null) {
+      return []
+    }
     const safeChannels = Array.isArray(channels)
       ? channels.map(normalizeChannelLikeItem).filter(Boolean)
       : []
@@ -151,6 +154,16 @@ export const useChatChannelsAndFriends = () => {
       }
 
       const channelID = buildDirectChannelID(currentUserID, friendID)
+      const hasExistingConversation = safeChannels.some(channelItem => {
+        const participants = Array.isArray(channelItem?.participants)
+          ? channelItem.participants
+          : []
+        return participants.some(participant => participant?.id === friendID)
+      })
+
+      if (hasExistingConversation) {
+        return
+      }
 
       all.push({
         id: channelID,
@@ -212,5 +225,6 @@ export const useChatChannelsAndFriends = () => {
 
   return {
     hydratedListWithChannelsAndFriends,
+    loading: channels === null,
   }
 }

@@ -136,7 +136,7 @@ exports.insertMessage = async data => {
 
   const updatedMetadata = {
     lastMessage:
-      messageData?.content?.length > 0 ? messageData?.content : messageData?.media,
+      messageData?.content?.length > 0 ? messageData?.content : messageData?.media ?? '',
     lastMessageDate: messageData.createdAt,
     lastMessageSenderId: messageData.senderID,
     lastThreadMessageId: messageData.id,
@@ -198,7 +198,10 @@ const hydrateChatFeedsForAllParticipants = async (
     participants: participants,
     creatorID: channel.creatorID,
     admins: channel?.admins ?? [],
-    lastMessage: message?.content ?? '',
+    lastMessage:
+      typeof message?.content === 'string' && message.content.length > 0
+        ? message.content
+        : message?.media ?? '',
     lastMessageDate: message?.createdAt,
     lastThreadMessageId: message?.id ?? '',
     readUserIDs: message?.readUserIDs ?? [],
@@ -226,7 +229,10 @@ const hydrateChatFeedsForAllParticipants = async (
       participants: participants,
       creatorID: channel.creatorID,
       admins: channel?.admins ?? [],
-      lastMessage: message?.content ?? '',
+      lastMessage:
+        typeof message?.content === 'string' && message.content.length > 0
+          ? message.content
+          : message?.media ?? '',
       lastMessageDate: message?.createdAt,
       lastThreadMessageId: message?.id ?? '',
       readUserIDs: message?.readUserIDs ?? [],
@@ -291,7 +297,7 @@ const broadcastNotificationToAllParticipants = async (channelID, message) => {
       fromTitle,
       content,
       'chat_message',
-      { channleID: channelID },
+      { channelID: channelID },
     )
     return true
   })

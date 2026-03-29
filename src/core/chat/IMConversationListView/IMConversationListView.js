@@ -19,7 +19,10 @@ const IMConversationListView = memo(props => {
     pullToRefresh,
   } = useChatChannels()
 
-  const { hydratedListWithChannelsAndFriends } = useChatChannelsAndFriends()
+  const {
+    hydratedListWithChannelsAndFriends,
+    loading: hydratedChannelsLoading,
+  } = useChatChannelsAndFriends()
 
   useEffect(() => {
     if (!currentUser?.id) {
@@ -65,13 +68,18 @@ const IMConversationListView = memo(props => {
     Array.isArray(hydratedListWithChannelsAndFriends) &&
     hydratedListWithChannelsAndFriends.length > 0
       ? hydratedListWithChannelsAndFriends
-      : channels || []
+      : Array.isArray(channels)
+        ? channels
+        : []
 
   return (
     <IMConversationList
       user={currentUser}
       conversations={safeConversationList}
-      loading={channels === null && safeConversationList.length === 0}
+      loading={
+        (channels === null || hydratedChannelsLoading) &&
+        safeConversationList.length === 0
+      }
       loadingBottom={loadingBottom}
       onConversationPress={onChatItemPress}
       headerComponent={headerComponent}
