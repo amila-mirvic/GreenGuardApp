@@ -1,6 +1,6 @@
 import { ChatFunctions, DocRef, channelsRef } from './chatRef'
 
-const DEFAULT_CALLABLE_TIMEOUT_MS = 30000
+const DEFAULT_CALLABLE_TIMEOUT_MS = 8000
 
 const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => {
   let timeoutId
@@ -20,22 +20,9 @@ const withTimeout = async (promise, timeoutMs = DEFAULT_CALLABLE_TIMEOUT_MS) => 
   }
 }
 
-const normalizeParticipant = participant => {
-  if (!participant) {
-    return null
-  }
-
-  const participantID = participant?.id || participant?.userID
-  if (!participantID) {
-    return null
-  }
-
-  return participant?.id ? participant : { ...participant, id: participantID }
-}
-
 const dedupeParticipants = participants => {
   const safeParticipants = Array.isArray(participants)
-    ? participants.map(normalizeParticipant).filter(Boolean)
+    ? participants.filter(Boolean)
     : []
 
   return safeParticipants.reduce((acc, participant) => {
@@ -51,9 +38,7 @@ const dedupeParticipants = participants => {
 
 const buildChannelPayload = (creator, otherParticipants, name, isAdmin = false) => {
   const participants = dedupeParticipants([creator, ...(otherParticipants || [])])
-  const isGroupChat = Boolean(
-    isAdmin || (name && name.trim().length > 0) || participants.length > 2,
-  )
+  const isGroupChat = Boolean(isAdmin || (name && name.trim().length > 0) || participants.length > 2)
 
   let channelID = ''
 
@@ -90,20 +75,7 @@ export const subscribeChannels = (userID, callback) => {
     .onSnapshot(
       { includeMetadataChanges: true },
       snapshot => {
-        const items =
-          snapshot?.docs?.map(doc => {
-            const data = doc.data()
-            const participants = Array.isArray(data?.participants)
-              ? data.participants.map(normalizeParticipant).filter(Boolean)
-              : []
-
-            return {
-              ...data,
-              id: data?.id || doc.id,
-              channelID: data?.channelID || data?.id || doc.id,
-              participants,
-            }
-          }) ?? []
+        const items = snapshot?.docs?.map(doc => doc.data()) ?? []
         callback && callback(items)
       },
       error => {
@@ -122,23 +94,7 @@ export const subscribeToSingleChannel = (channelID, callback) => {
   return channelsRef.doc(channelID).onSnapshot(
     { includeMetadataChanges: true },
     doc => {
-      if (!doc?.exists) {
-        callback && callback(null)
-        return
-      }
-
-      const data = doc.data()
-      const participants = Array.isArray(data?.participants)
-        ? data.participants.map(normalizeParticipant).filter(Boolean)
-        : []
-
-      callback &&
-        callback({
-          ...data,
-          id: data?.id || doc.id,
-          channelID: data?.channelID || data?.id || doc.id,
-          participants,
-        })
+      callback && callback(doc?.exists ? doc.data() : null)
     },
     error => {
       console.log('subscribeToSingleChannel error:', error)
@@ -178,13 +134,7 @@ export const createChannel = async (
     )
 
     const res = await withTimeout(ChatFunctions().createChannel(payload))
-    const createdChannel = res?.data
-
-    if (!createdChannel?.id && !createdChannel?.channelID) {
-      return null
-    }
-
-    return createdChannel
+    return res?.data ?? payload
   } catch (error) {
     console.log('createChannel error:', error)
     return null
@@ -231,14 +181,6 @@ export const markUserAsTypingInChannel = async (channelID, userID) => {
 export const sendMessage = async (channel, newMessage) => {
   try {
     const channelID = channel?.id || channel?.channelID
-
-    if (!channelID) {
-      return {
-        success: false,
-        error: 'Missing channel ID. The message could not be sent.',
-      }
-    }
-
     const res = await withTimeout(
       ChatFunctions().insertMessage({
         channelID,
@@ -246,15 +188,7 @@ export const sendMessage = async (channel, newMessage) => {
         message: newMessage,
       }),
     )
-
-    if (res?.data == null) {
-      return {
-        success: false,
-        error: 'The chat channel could not be found or the message was not saved.',
-      }
-    }
-
-    return res.data
+    return res?.data ?? { success: true }
   } catch (error) {
     console.log('sendMessage error:', error)
     return { success: false, error }
@@ -289,11 +223,7 @@ export const subscribeToMessages = (channelID, callback) => {
     .onSnapshot(
       { includeMetadataChanges: true },
       snapshot => {
-        const items =
-          snapshot?.docs?.map(doc => ({
-            ...doc.data(),
-            id: doc.data()?.id || doc.id,
-          })) ?? []
+        const items = snapshot?.docs?.map(doc => doc.data()) ?? []
         callback && callback(items)
       },
       error => {

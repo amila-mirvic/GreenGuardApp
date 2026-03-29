@@ -12,60 +12,6 @@ const collectionsUtils = require('../core/collections')
 const { sendPushNotification } = require('../notifications/utils')
 const { add } = collectionsUtils
 
-const normalizeParticipant = participant => {
-  if (!participant) {
-    return null
-  }
-
-  const participantID = participant.id || participant.userID
-  if (!participantID) {
-    return null
-  }
-
-  return participant.id ? participant : { ...participant, id: participantID }
-}
-
-const isValidParticipant = participant => {
-  return Boolean(normalizeParticipant(participant))
-}
-
-const ensureChannelDocumentExists = async (channelID, channelPayload, message) => {
-  const channelRef = chatChannelsRef.doc(channelID)
-  const channelSnapshot = await channelRef.get()
-
-  if (channelSnapshot.exists) {
-    return channelSnapshot.data()
-  }
-
-  const participants = Array.isArray(channelPayload?.participants)
-    ? channelPayload.participants.map(normalizeParticipant).filter(Boolean)
-    : []
-
-  if (!participants.length) {
-    return null
-  }
-
-  const creatorID =
-    channelPayload?.creatorID || message?.senderID || participants?.[0]?.id
-
-  const payload = {
-    id: channelID,
-    creatorID,
-    participants,
-  }
-
-  if (Array.isArray(channelPayload?.admins) && channelPayload.admins.length > 0) {
-    payload.admins = channelPayload.admins
-  }
-
-  if (typeof channelPayload?.name === 'string') {
-    payload.name = channelPayload.name
-  }
-
-  await channelRef.set(payload, { merge: true })
-  return payload
-}
-
 exports.createChannel = async data => {
   console.log('Creating channel: ')
   console.log(JSON.stringify(data))
@@ -78,16 +24,7 @@ exports.createChannel = async data => {
     return channel.data()
   }
 
-  const normalizedParticipants = Array.isArray(data?.participants)
-    ? data.participants.map(normalizeParticipant).filter(Boolean)
-    : []
-
-  const normalizedChannelData = {
-    ...data,
-    participants: normalizedParticipants,
-  }
-
-  await chatChannelsRef.doc(id).set(normalizedChannelData)
+  await chatChannelsRef.doc(id).set(data)
 
   await hydrateChatFeedsForAllParticipants(
     id,
@@ -99,32 +36,16 @@ exports.createChannel = async data => {
     true,
   )
 
-  return normalizedChannelData
+  return data
 }
 
 exports.insertMessage = async data => {
-  const { message, channelID, channel: channelPayload } = data
+  const { message, channelID } = data
 
-  if (!channelID || !message?.id || !message?.senderID) {
-    console.log('invalid insertMessage payload')
-    return {
-      success: false,
-      error: 'Missing channel or message payload.',
-    }
-  }
-
-  const ensuredChannel = await ensureChannelDocumentExists(
-    channelID,
-    channelPayload,
-    message,
-  )
-
-  if (!ensuredChannel) {
-    console.log(`invalid op, there no such channel and it could not be restored`)
-    return {
-      success: false,
-      error: 'Channel does not exist.',
-    }
+  const channel = await chatChannelsRef.doc(channelID).get()
+  if (!channel.exists) {
+    console.log(`invalid op, there no such channel`)
+    return
   }
 
   const messageData = {
@@ -132,23 +53,28 @@ exports.insertMessage = async data => {
     createdAt: Math.floor(new Date().getTime() / 1000),
   }
 
+  // We first add the message to the channel
   await add(chatChannelsRef.doc(channelID), 'messages', messageData, true)
 
+  // We've inserted a new messsage
+  // We need to update channel's metadata afected by the new message (e.g. lastMessage timestamp for the current channel)
   const updatedMetadata = {
     lastMessage:
-      messageData?.content?.length > 0 ? messageData?.content : messageData?.media ?? '',
-    lastMessageDate: messageData.createdAt,
-    lastMessageSenderId: messageData.senderID,
+      message?.content?.length > 0 ? message?.content : message?.media,
+    lastMessageDate: message?.createdAt,
+    lastMessageSenderId: message?.senderID,
     lastThreadMessageId: messageData.id,
-    readUserIDs: [messageData.senderID],
+    readUserIDs: [message?.senderID],
     typingUsers: {},
   }
   await chatChannelsRef.doc(channelID).set(updatedMetadata, { merge: true })
 
+  // We now need to update all the denormalized chat feeds for all the participants in the channel
   await hydrateChatFeedsForAllParticipants(channelID, messageData)
+  // Send push notifications
   await broadcastNotificationToAllParticipants(channelID, messageData)
 
-  return { success: true, channelID, messageID: messageData.id }
+  return { success: true }
 }
 
 const hydrateChatFeedsForAllParticipants = async (
@@ -161,30 +87,21 @@ const hydrateChatFeedsForAllParticipants = async (
   const channel = channelSnap?.data()
   const sender = await fetchUser(message.senderID)
 
-  if (!channel || !sender) {
-    return
-  }
-
   console.log('channel:')
   console.log(JSON.stringify(channel))
   console.log('sender:')
   console.log(JSON.stringify(sender))
 
-  const participants = Array.isArray(channel?.participants)
-    ? channel.participants.map(normalizeParticipant).filter(Boolean)
-    : []
-
-  if (!participants.length) {
-    return
-  }
+  const participants = channel?.participants
 
   var feedItemTitleForSender = channel?.name
 
-  const otherParticipants = participants.filter(
+  const otherParticipants = participants?.filter(
     participant => participant && participant.id !== sender.id,
   )
 
-  if (!channel?.admins && otherParticipants.length > 0) {
+  // if one2one chat then channel name will be other participant name
+  if (!channel?.admins) {
     feedItemTitleForSender = `${otherParticipants[0].firstName} ${otherParticipants[0].lastName}`
   }
 
@@ -198,26 +115,22 @@ const hydrateChatFeedsForAllParticipants = async (
     participants: participants,
     creatorID: channel.creatorID,
     admins: channel?.admins ?? [],
-    lastMessage:
-      typeof message?.content === 'string' && message.content.length > 0
-        ? message.content
-        : message?.media ?? '',
-    lastMessageDate: message?.createdAt,
-    lastThreadMessageId: message?.id ?? '',
-    readUserIDs: message?.readUserIDs ?? [],
   }
 
   console.log(JSON.stringify(data))
 
+  // We update the chat feed for the sender
   await add(socialFeedsRef.doc(sender.id), 'chat_feed', data, true)
 
   var feedItemTitleForRecipients = channel?.name
 
+  // if one2one chat then channel name will be other participant name
   if (!channel?.admins) {
     feedItemTitleForRecipients = `${sender?.firstName} ${sender.lastName}`
   }
 
-  const promises = otherParticipants.map(async participant => {
+  const promises = otherParticipants?.map(async participant => {
+    // we update the chat feed for all the other participants
     const participantID = participant?.id
     const data2 = {
       id: channelID,
@@ -229,13 +142,6 @@ const hydrateChatFeedsForAllParticipants = async (
       participants: participants,
       creatorID: channel.creatorID,
       admins: channel?.admins ?? [],
-      lastMessage:
-        typeof message?.content === 'string' && message.content.length > 0
-          ? message.content
-          : message?.media ?? '',
-      lastMessageDate: message?.createdAt,
-      lastThreadMessageId: message?.id ?? '',
-      readUserIDs: message?.readUserIDs ?? [],
     }
     console.log(JSON.stringify(data2))
     await add(socialFeedsRef.doc(participantID), 'chat_feed', data2, true)
@@ -250,15 +156,13 @@ const broadcastNotificationToAllParticipants = async (channelID, message) => {
   const channel = channelSnap?.data()
   const sender = await fetchUser(message.senderID)
 
-  if (!channel || !sender) {
+  if (!channel) {
     return null
   }
 
-  const participants = Array.isArray(channel?.participants)
-    ? channel.participants.map(normalizeParticipant).filter(Boolean)
-    : []
+  const participants = channel?.participants
 
-  const otherParticipants = participants.filter(
+  const otherParticipants = participants?.filter(
     participant => participant && participant.id != sender.id,
   )
 
@@ -297,7 +201,7 @@ const broadcastNotificationToAllParticipants = async (channelID, message) => {
       fromTitle,
       content,
       'chat_message',
-      { channelID: channelID },
+      { channleID: channelID },
     )
     return true
   })
