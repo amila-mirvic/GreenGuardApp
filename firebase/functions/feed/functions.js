@@ -7,6 +7,11 @@ const db = admin.firestore()
 const canonicalPostsRef = db.collection('posts')
 const canonicalStoriesRef = db.collection('stories')
 const socialFeedsRef = db.collection('social_feeds')
+const socialGraphRef = db.collection('social_graph')
+
+const HOT_PATH_RUNTIME = {
+  minInstances: 1,
+}
 
 const userClient = require('../core/user')
 const { fetchUser, updateUser } = userClient
@@ -22,6 +27,34 @@ const { getList, add, get } = collectionsUtils
 const { fetchPost, fetchStory } = require('./common')
 const { sendPushNotification } = require('../notifications/utils')
 
+const getCollectionDocIDs = async (docRef, collectionName) => {
+  try {
+    const [liveSnapshot, historicalSnapshot] = await Promise.all([
+      docRef.collection(`${collectionName}_live`).get(),
+      docRef.collection(`${collectionName}_historical`).get(),
+    ])
+
+    const ids = new Set()
+
+    liveSnapshot?.docs?.forEach(doc => {
+      if (doc?.id) {
+        ids.add(doc.id)
+      }
+    })
+
+    historicalSnapshot?.docs?.forEach(doc => {
+      if (doc?.id) {
+        ids.add(doc.id)
+      }
+    })
+
+    return ids
+  } catch (error) {
+    console.log(`getCollectionDocIDs error for ${collectionName}:`, error)
+    return new Set()
+  }
+}
+
 exports.addStory = functions
   .runWith({
     minInstances: 1,
@@ -29,7 +62,6 @@ exports.addStory = functions
   .https.onCall(async (data, context) => {
     console.log(`Adding new story: ${JSON.stringify(data)}`)
 
-    // We set all the db fields for the new post
     const { authorID, storyData } = data
     const author = await fetchUser(authorID)
     const storyID = uuidv4()
@@ -37,17 +69,13 @@ exports.addStory = functions
       id: storyID,
       ...storyData,
       authorID,
-      author: author,
-      createdAt: new Date().getTime(), 
+      author,
+      createdAt: new Date().getTime(),
       viewsCount: 0,
       reactionsCount: 0,
     }
 
-    // We insert the new story into canonical collection (source of truth)
     await canonicalStoriesRef.doc(storyID).set(story, { merge: true })
-
-    // We update all the stories feed for the followers / friends of the author (we include the author too, as we want the post to appear in their own timeline)
-    // This gets done in feed/trigger.js
   })
 
 exports.addPost = functions
@@ -57,7 +85,6 @@ exports.addPost = functions
   .https.onCall(async (data, context) => {
     console.log(`Adding new post: ${JSON.stringify(data)}`)
 
-    // We set all the db fields for the new post
     const { authorID, postData } = data
     const { postText } = postData
     const author = await fetchUser(authorID)
@@ -67,26 +94,18 @@ exports.addPost = functions
       id: postID,
       ...postData,
       authorID,
-      author: author,
+      author,
       hashtags,
-      createdAt: new Date().getTime(), 
+      createdAt: new Date().getTime(),
       commentCount: 0,
       reactionsCount: 0,
       reactions: {
-        like: [], // the list of userIDs who liked the post
-      
+        like: [],
       },
     }
 
-    // TODO: Compute mentions
-
-    // We insert the new post into canonical collection (source of truth)
     await canonicalPostsRef.doc(postID).set(post, { merge: true })
 
-    // We update all the timelines for the followers / friends of the author (we include the author too, as we want the post to appear in their own timeline)
-    // This gets done in trigger.js
-
-    // We update the author user data, with the new post count
     const prevCount = author.postCount || 0
     await updateUser(authorID, { postCount: prevCount + 1 })
   })
@@ -96,15 +115,8 @@ exports.deletePost = functions.https.onCall(async (data, context) => {
 
   const { authorID, postID } = data
 
-  // TODO: Remove from hashtags
-
-  // Remove the post from the canonical collection (source of truth)
   await canonicalPostsRef.doc(postID).delete()
 
-  // We update all the timelines for the followers / friends of the author (we include the author too, as we want the post to appear in their own timeline)
-  // This gets done in trigger.js
-
-  // We update the author user data, with the new post count
   const author = await fetchUser(authorID)
   await updateUser(authorID, { postCount: (author.postCount || 1) - 1 })
 })
@@ -126,8 +138,9 @@ exports.addReaction = functions
       'sad',
     ]
 
- let { authorID, postID, reaction } = data
-reaction = 'like'
+    let { authorID, postID, reaction } = data
+    reaction = 'like'
+
     const post = await fetchPost(postID)
     const postAuthor = await fetchUser(post?.authorID)
     const postReactionsDict = post.reactions
@@ -141,9 +154,7 @@ reaction = 'like'
     )
 
     if (reactionKeyForAuthorAndPost) {
-      // This user already had a reaction on this post in the past, so we remove it or replace it
       if (reactionKeyForAuthorAndPost === reaction) {
-        // The reaction is the same, so we remove it
         newPostReactionsDict = { ...postReactionsDict }
         newPostReactionsDict[reactionKeyForAuthorAndPost] = postReactionsDict[
           reactionKeyForAuthorAndPost
@@ -152,28 +163,25 @@ reaction = 'like'
         postAuthorReactionsCount =
           postAuthorReactionsCount - 1 < 0 ? 0 : postAuthorReactionsCount - 1
       } else {
-        // The reaction is different, so we replace it
         newPostReactionsDict = { ...postReactionsDict }
         newPostReactionsDict[reactionKeyForAuthorAndPost] = postReactionsDict[
           reactionKeyForAuthorAndPost
-        ].filter(id => id !== authorID) // remove the old reaction
+        ].filter(id => id !== authorID)
         newPostReactionsDict[reaction] = [
           ...newPostReactionsDict[reaction],
           authorID,
-        ] // add the new reaction
+        ]
       }
     } else {
-      // This user had no reaction on this post in the past, so we add it
       newPostReactionsDict = { ...postReactionsDict }
       newPostReactionsDict[reaction] = [
         ...newPostReactionsDict[reaction],
         authorID,
-      ] // add the new reaction
+      ]
       reactionsCount = reactionsCount + 1
       postAuthorReactionsCount = postAuthorReactionsCount + 1
 
       try {
-        // we also send a push notification to the author of the post (if it's not the author of the reaction)
         if (post.authorID !== authorID) {
           const reactionAuthor = await fetchUser(authorID)
           await sendPushNotification(
@@ -181,7 +189,7 @@ reaction = 'like'
             'Green Guard',
             `${reactionAuthor.firstName} reacted to your post.`,
             'feed_reaction',
-            { postID: postID, reactionAuthorID: authorID },
+            { postID, reactionAuthorID: authorID },
           )
         }
       } catch (e) {
@@ -213,19 +221,16 @@ exports.addComment = functions
       authorID,
       author,
       postID,
-      createdAt: new Date().getTime(), 
+      createdAt: new Date().getTime(),
     }
 
-    // Insert the comment into the posts' comments list
     await add(canonicalPostsRef.doc(postID), 'comments', commentData, true)
 
-    // We update the post data, with the new comment count
     const post = await fetchPost(postID)
     const { commentCount } = post
     const postData = { commentCount: commentCount + 1 }
     await canonicalPostsRef.doc(postID).set(postData, { merge: true })
 
-    // We send a push notification to the author of the post
     if (post.authorID !== authorID) {
       await sendPushNotification(
         post.authorID,
@@ -233,7 +238,7 @@ exports.addComment = functions
         `${author.firstName} commented to your post.`,
         'feed_comment',
         {
-          postID: postID,
+          postID,
           commentAuthorID: authorID,
         },
       )
@@ -242,31 +247,32 @@ exports.addComment = functions
     return commentData
   })
 
-exports.listHomeFeedPosts = functions.https.onCall(async (data, context) => {
-  const { userID, page, size } = data
+exports.listHomeFeedPosts = functions
+  .runWith(HOT_PATH_RUNTIME)
+  .https.onCall(async (data, context) => {
+    const { userID, page, size } = data
 
-  console.log(`Fetching home feed for ${JSON.stringify(data)} `)
+    console.log(`Fetching home feed for ${JSON.stringify(data)} `)
 
-  const posts = await getList(
-    socialFeedsRef.doc(userID),
-    'home_feed',
-    page,
-    size,
-    true,
-  )
-  if (posts?.length > 0) {
-    console.log(`fetched posts: `)
-    console.log(posts)
-    return { posts, success: true }
-  } else {
-    return { posts: [], success: true }
-  }
-})
+    const posts = await getList(
+      socialFeedsRef.doc(userID),
+      'home_feed',
+      page,
+      size,
+      true,
+    )
+
+    if (posts?.length > 0) {
+      console.log(`fetched posts: `)
+      console.log(posts)
+      return { posts, success: true }
+    } else {
+      return { posts: [], success: true }
+    }
+  })
 
 exports.listProfileFeedPosts = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     const { userID, page, size } = data
     console.log(`Fetching profile feed for ${JSON.stringify(data)} `)
@@ -287,9 +293,7 @@ exports.listProfileFeedPosts = functions
   })
 
 exports.listComments = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     const { postID, page, size } = data
     console.log(`Fetching comments for ${JSON.stringify(data)} `)
@@ -311,157 +315,134 @@ exports.listComments = functions
   })
 
 exports.fetchProfile = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
-    const { profileID, viewerID, page, size } = data
+    const { profileID, viewerID } = data
     console.log(`Fetching profile for ${JSON.stringify(data)} `)
-    const socialGraphRef = db.collection('social_graph')
 
-    // Profile Data
-    const profile = await fetchUser(profileID)
-    var result = { user: profile, success: true }
+    const [profile, friends, friendship] = await Promise.all([
+      fetchUser(profileID),
+      getList(socialGraphRef.doc(profileID), 'mutual_users', -1, 0, false),
+      profileID === viewerID
+        ? Promise.resolve(null)
+        : get(socialGraphRef.doc(viewerID), 'mutual_users', profileID),
+    ])
 
-    // Friends Data
-    const friends = await getList(
-      socialGraphRef.doc(profileID),
-      'mutual_users',
-      -1,
-      0,
-      false,
-    )
+    let result = { user: profile, success: true }
+
     if (friends?.length > 0) {
       result = {
         ...result,
         friends: friends.slice(0, 6),
-        moreFriendsAvailable: friends?.length > 6,
+        moreFriendsAvailable: friends.length > 6,
       }
     }
 
-    // Button Action Data
     if (profileID === viewerID) {
-      // This is my profile (user looking at their own profile)
       result = { ...result, actionButtonType: 'settings' }
+    } else if (friendship) {
+      result = { ...result, actionButtonType: 'message' }
     } else {
-      // This is someone else's profile - we show either "Send Message" or "Add / Follow" button
-      var collectionName = 'outbound_users'
-      collectionName = 'mutual_users'
-      const friend = await get(
-        socialGraphRef.doc(viewerID),
-        collectionName,
-        profileID,
-      )
-      if (friend) {
-        // This user is already a friend of the profile user. so show DM button
-        result = { ...result, actionButtonType: 'message' }
-      } else {
-        // This user is not a friend of the profile user. so show Add / Follow button
-        result = { ...result, actionButtonType: 'add' }
-      }
+      result = { ...result, actionButtonType: 'add' }
     }
 
     console.log(`fetched profileData: ${JSON.stringify(result)} `)
     return { profileData: result, success: true }
-    // TODO: Handle errors
   })
 
 exports.listDiscoverFeedPosts = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     const { userID, page, size } = data
 
     console.log(`Fetching discover/explore feed for ${JSON.stringify(data)} `)
 
-    const harshedUsersBlockedByMe = await getAllUsersBlockedByMe(userID) // List of users blocked by me
-    const harshedUsersBlockingMe = await getAllUsersBlockingMe(userID) // List of users blocking me
+    const [
+      harshedUsersBlockedByMe,
+      harshedUsersBlockingMe,
+      mutualUserIDs,
+    ] = await Promise.all([
+      getAllUsersBlockedByMe(userID),
+      getAllUsersBlockingMe(userID),
+      getCollectionDocIDs(socialGraphRef.doc(userID), 'mutual_users'),
+    ])
 
-    console.log(
-      `harshedUsersBlockingMe : => ${JSON.stringify(harshedUsersBlockingMe)} `,
-    )
-    console.log(
-      `harshedUsersBlockedByMe =>: ${JSON.stringify(harshedUsersBlockedByMe)} `,
-    )
+    const excludedAuthorIDs = new Set([
+      ...Object.keys(harshedUsersBlockedByMe || {}),
+      ...Object.keys(harshedUsersBlockingMe || {}),
+      ...Array.from(mutualUserIDs || []),
+      userID,
+    ])
 
-    const posts = await fetchNonRelatedPosts(userID, page, size, [])
+    const posts = await fetchNonRelatedPosts(page, size, excludedAuthorIDs, [])
 
-    const finalPosts = posts.filter(
-      post =>
-        post.authorID &&
-        !harshedUsersBlockedByMe[post.authorID] &&
-        !harshedUsersBlockingMe[post.authorID],
-    )
-    if (finalPosts?.length > 0) {
-      console.log(`fetched posts: ${JSON.stringify(finalPosts)} `)
-      return { posts: finalPosts, success: true }
+    if (posts?.length > 0) {
+      console.log(`fetched posts: ${JSON.stringify(posts)} `)
+      return { posts, success: true }
     } else {
       return { posts: [], success: true }
     }
   })
 
-exports.listStories = functions.https.onCall(async (data, context) => {
-  const { userID, page, size } = data
-  console.log(`Fetching stories for ${JSON.stringify(data)} `)
+exports.listStories = functions
+  .runWith(HOT_PATH_RUNTIME)
+  .https.onCall(async (data, context) => {
+    const { userID, page, size } = data
+    console.log(`Fetching stories for ${JSON.stringify(data)} `)
 
-  const stories = await getList(
-    socialFeedsRef.doc(userID),
-    'stories_feed',
-    page,
-    size,
-    true,
-  )
-  if (stories?.length > 0) {
-    console.log(`fetched stories: `)
-    console.log(stories)
-    return { stories, success: true }
-  } else {
-    return { stories: [], success: true }
-  }
-})
-
-exports.addStoryReaction = functions.https.onCall(async (data, context) => {
-  console.log(`Adding story reaction: ${JSON.stringify(data)}`)
-
-  // We set all the db fields for the new post
-  const { userID, storyID } = data
-  const story = await fetchStory(storyID)
-  const { reactionsCount } = story
-
-  let storyData = {}
-
-  if (story?.reactions?.includes(userID)) {
-    storyData = {
-      reactionsCount: reactionsCount - 1,
-      reactions: story?.reactions?.filter(id => id !== userID),
+    const stories = await getList(
+      socialFeedsRef.doc(userID),
+      'stories_feed',
+      page,
+      size,
+      true,
+    )
+    if (stories?.length > 0) {
+      console.log(`fetched stories: `)
+      console.log(stories)
+      return { stories, success: true }
+    } else {
+      return { stories: [], success: true }
     }
-  } else {
-    storyData = {
-      reactionsCount: reactionsCount + 1,
-      reactions: [...(story?.reactions || []), userID],
+  })
+
+exports.addStoryReaction = functions
+  .runWith(HOT_PATH_RUNTIME)
+  .https.onCall(async (data, context) => {
+    console.log(`Adding story reaction: ${JSON.stringify(data)}`)
+
+    const { userID, storyID } = data
+    const story = await fetchStory(storyID)
+    const { reactionsCount } = story
+
+    let storyData = {}
+
+    if (story?.reactions?.includes(userID)) {
+      storyData = {
+        reactionsCount: reactionsCount - 1,
+        reactions: story?.reactions?.filter(id => id !== userID),
+      }
+    } else {
+      storyData = {
+        reactionsCount: reactionsCount + 1,
+        reactions: [...(story?.reactions || []), userID],
+      }
     }
-  }
 
-  // We update story into canonical collection (source of truth)
-  await canonicalStoriesRef.doc(storyID).set(storyData, { merge: true })
+    await canonicalStoriesRef.doc(storyID).set(storyData, { merge: true })
 
-  return { ...story, ...storyData }
-
-  // We update all the stories feed for the followers / friends of the author (we include the author too, as we want the post to appear in their own timeline)
-  // This gets done in feed/trigger.js
-})
+    return { ...story, ...storyData }
+  })
 
 exports.listHashtagFeedPosts = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     const { userID, hashtag, page, size } = data
     console.log(`Fetching hashtag feed for ${JSON.stringify(data)} `)
 
-    const harshedUsersBlockedByMe = await getAllUsersBlockedByMe(userID) // List of users blocked by me
-    const harshedUsersBlockingMe = await getAllUsersBlockingMe(userID) // List of users blocking me
+    const [harshedUsersBlockedByMe, harshedUsersBlockingMe] = await Promise.all(
+      [getAllUsersBlockedByMe(userID), getAllUsersBlockingMe(userID)],
+    )
 
     const hashtagFeedsRef = db.collection('hashtags')
     const posts = await getList(
@@ -487,55 +468,36 @@ exports.listHashtagFeedPosts = functions
     }
   })
 
-const fetchNonRelatedPosts = async (userID, page, size, postsSoFar) => {
+const fetchNonRelatedPosts = async (page, size, excludedAuthorIDs, postsSoFar) => {
   if (postsSoFar.length >= size) {
-    return postsSoFar
+    return postsSoFar.slice(0, size)
   }
 
-  const socialGraphRef = db.collection('social_graph')
+  const fetchBatchSize = Math.max(size * 2, 20)
 
   const snapshot = await canonicalPostsRef
-    .offset(page * size)
     .orderBy('createdAt', 'desc')
-    .limit(size)
+    .offset(page * fetchBatchSize)
+    .limit(fetchBatchSize)
     .get()
 
-  const allPosts = snapshot?.docs?.map(doc => doc.data())
+  const allPosts = snapshot?.docs?.map(doc => doc.data()) ?? []
+
   if (allPosts.length === 0) {
-    return postsSoFar
+    return postsSoFar.slice(0, size)
   }
 
-  const promises = allPosts.map(async post => {
-    const { authorID } = post
-    var collectionName = 'outbound_users'
-    collectionName = 'mutual_users'
-    const friend = await get(
-      socialGraphRef.doc(userID),
-      collectionName,
-      authorID,
-    )
-    if (friend) {
-      return null
-    }
-    return { ...post }
-  })
+  const posts = allPosts.filter(
+    post => post?.authorID && !excludedAuthorIDs.has(post.authorID),
+  )
 
-  const postsWithNull = await Promise.all(promises)
-  const posts = postsWithNull.filter(post => post && userID !== post.authorID)
+  const combined = [...postsSoFar, ...posts]
 
-  if (posts.length < size) {
-    // if we didn't fetch enough discover posts from non-related friends AND we still have more posts in the database, we fetch one more page, etc.
-    // WARNING: This is a recursive call, be extremely careful with this, make sure your stop condition is correct and you don't recurse infinitely.
-    return [
-      ...posts,
-      ...(await fetchNonRelatedPosts(userID, page + 1, size, [
-        ...postsSoFar,
-        ...posts,
-      ])),
-    ]
-  } else {
-    return [...postsSoFar, ...posts]
+  if (combined.length >= size || allPosts.length < fetchBatchSize) {
+    return combined.slice(0, size)
   }
+
+  return fetchNonRelatedPosts(page + 1, size, excludedAuthorIDs, combined)
 }
 
 const extractHashtags = text => {

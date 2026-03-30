@@ -54,9 +54,31 @@ const mergeTwoChannels = (existingItem, incomingItem) => {
 
   const existingTs = getChannelTimestamp(existing)
   const incomingTs = getChannelTimestamp(incoming)
-
+  const incomingIsNewer = incomingTs > existingTs
   const newer = incomingTs >= existingTs ? incoming : existing
   const older = incomingTs >= existingTs ? existing : incoming
+
+  const resolvedPreview = incomingIsNewer
+    ? getNonEmptyString(incoming?.lastMessage, incoming?.content)
+    : getNonEmptyString(
+        newer?.lastMessage,
+        newer?.content,
+        older?.lastMessage,
+        older?.content,
+      )
+
+  const resolvedContent = incomingIsNewer
+    ? getNonEmptyString(incoming?.content, incoming?.lastMessage)
+    : getNonEmptyString(
+        newer?.content,
+        newer?.lastMessage,
+        older?.content,
+        older?.lastMessage,
+      )
+
+  const resolvedSenderID = incomingIsNewer
+    ? incoming?.lastMessageSenderId || ''
+    : newer?.lastMessageSenderId ?? older?.lastMessageSenderId ?? ''
 
   return {
     ...older,
@@ -71,23 +93,12 @@ const mergeTwoChannels = (existingItem, incomingItem) => {
         : [],
     title: getNonEmptyString(newer?.title, older?.title),
     name: getNonEmptyString(newer?.name, older?.name),
-    content: getNonEmptyString(
-      newer?.content,
-      newer?.lastMessage,
-      older?.content,
-      older?.lastMessage,
-    ),
-    lastMessage: getNonEmptyString(
-      newer?.lastMessage,
-      newer?.content,
-      older?.lastMessage,
-      older?.content,
-    ),
+    content: resolvedContent,
+    lastMessage: resolvedPreview,
     media: newer?.media ?? older?.media ?? null,
     lastMessageDate:
       newer?.lastMessageDate ?? older?.lastMessageDate ?? older?.createdAt ?? '',
-    lastMessageSenderId:
-      newer?.lastMessageSenderId ?? older?.lastMessageSenderId ?? '',
+    lastMessageSenderId: resolvedSenderID,
     markedAsRead:
       typeof newer?.markedAsRead === 'boolean'
         ? newer.markedAsRead

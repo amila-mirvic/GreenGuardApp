@@ -7,6 +7,10 @@ const db = admin.firestore()
 const socialFeedsRef = db.collection('social_feeds')
 const chatChannelsRef = db.collection('channels')
 
+const HOT_PATH_RUNTIME = {
+  minInstances: 1,
+}
+
 const userClient = require('../core/user')
 const { fetchUser } = userClient
 
@@ -14,17 +18,16 @@ const collectionsUtils = require('../core/collections')
 const { add, remove, getList, getDoc, deleteCollection } = collectionsUtils
 
 const { createChannel, insertMessage } = require('./utils')
-
 const { hydrateChatFeedsForAllParticipants } = require('./utils')
 
-exports.createChannel = functions.https.onCall(async (data, context) => {
-  return await createChannel(data)
-})
+exports.createChannel = functions
+  .runWith(HOT_PATH_RUNTIME)
+  .https.onCall(async (data, context) => {
+    return await createChannel(data)
+  })
 
 exports.markAsRead = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     console.log('Mark as read: ')
     console.log(JSON.stringify(data))
@@ -64,9 +67,7 @@ exports.markAsRead = functions
   })
 
 exports.markUserAsTypingInChannel = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     console.log('Update user as typing in channel: ')
     console.log(JSON.stringify(data))
@@ -92,9 +93,7 @@ exports.markUserAsTypingInChannel = functions
   })
 
 exports.listMessages = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     const { channelID, page, size } = data
     console.log(`fetching messages `)
@@ -117,83 +116,81 @@ exports.listMessages = functions
   })
 
 exports.insertMessage = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     return await insertMessage(data)
   })
 
-exports.deleteMessage = functions.https.onCall(async (data, context) => {
-  const { channelID, messageID } = data
+exports.deleteMessage = functions
+  .runWith(HOT_PATH_RUNTIME)
+  .https.onCall(async (data, context) => {
+    const { channelID, messageID } = data
 
-  await remove(chatChannelsRef.doc(channelID), 'messages', messageID, true)
-  console.log(`Delete message ${messageID}`)
+    await remove(chatChannelsRef.doc(channelID), 'messages', messageID, true)
+    console.log(`Delete message ${messageID}`)
 
-  const liveMessageSnapshot = await chatChannelsRef
-    .doc(channelID)
-    .collection('messages_live')
-    .orderBy('createdAt', 'desc')
-    .limit(1)
-    .get()
+    const liveMessageSnapshot = await chatChannelsRef
+      .doc(channelID)
+      .collection('messages_live')
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get()
 
-  const historicalMessageSnapshot = await chatChannelsRef
-    .doc(channelID)
-    .collection('messages_historical')
-    .orderBy('createdAt', 'desc')
-    .limit(1)
-    .get()
+    const historicalMessageSnapshot = await chatChannelsRef
+      .doc(channelID)
+      .collection('messages_historical')
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get()
 
-  var lastMessage = null
+    var lastMessage = null
 
-  if (liveMessageSnapshot?.docs?.length > 0) {
-    lastMessage = liveMessageSnapshot.docs[0].data()
-  }
+    if (liveMessageSnapshot?.docs?.length > 0) {
+      lastMessage = liveMessageSnapshot.docs[0].data()
+    }
 
-  if (historicalMessageSnapshot?.docs?.length > 0) {
-    const tempMessage = historicalMessageSnapshot.docs[0].data()
+    if (historicalMessageSnapshot?.docs?.length > 0) {
+      const tempMessage = historicalMessageSnapshot.docs[0].data()
+      if (lastMessage) {
+        lastMessage =
+          tempMessage.createdAt > lastMessage?.createdAt
+            ? tempMessage
+            : lastMessage
+      } else {
+        lastMessage = tempMessage
+      }
+    }
+
+    var updatedMetadata = {
+      lastMessage: '',
+      lastMessageDate: '',
+      lastMessageSenderId: '',
+      lastThreadMessageId: '',
+      readUserIDs: [],
+    }
+
     if (lastMessage) {
-      lastMessage =
-        tempMessage.createdAt > lastMessage?.createdAt
-          ? tempMessage
-          : lastMessage
-    } else {
-      lastMessage = tempMessage
+      updatedMetadata = {
+        lastMessage:
+          lastMessage.content?.length > 0 ? lastMessage.content : lastMessage.media,
+        lastMessageDate: lastMessage.createdAt,
+        lastMessageSenderId: lastMessage.senderID,
+        lastThreadMessageId: lastMessage.id || lastMessage._id || '',
+        readUserIDs: [lastMessage.senderID],
+      }
     }
-  }
 
-  var updatedMetadata = {
-    lastMessage: '',
-    lastMessageDate: '',
-    lastMessageSenderId: '',
-    lastThreadMessageId: '',
-    readUserIDs: [],
-  }
+    await chatChannelsRef.doc(channelID).set(updatedMetadata, { merge: true })
 
-  if (lastMessage) {
-    updatedMetadata = {
-      lastMessage:
-        lastMessage.content?.length > 0 ? lastMessage.content : lastMessage.media,
-      lastMessageDate: lastMessage.createdAt,
-      lastMessageSenderId: lastMessage.senderID,
-      lastThreadMessageId: lastMessage.id || lastMessage._id || '',
-      readUserIDs: [lastMessage.senderID],
+    if (lastMessage) {
+      await hydrateChatFeedsForAllParticipants(channelID, lastMessage)
     }
-  }
 
-  await chatChannelsRef.doc(channelID).set(updatedMetadata, { merge: true })
-
-  if (lastMessage) {
-    await hydrateChatFeedsForAllParticipants(channelID, lastMessage)
-  }
-
-  return { success: true }
-})
+    return { success: true }
+  })
 
 exports.listChannels = functions
-  .runWith({
-    minInstances: 1,
-  })
+  .runWith(HOT_PATH_RUNTIME)
   .https.onCall(async (data, context) => {
     const { userID, page, size } = data
     console.log(`fetching chat channels `)
@@ -215,82 +212,84 @@ exports.listChannels = functions
     }
   })
 
-exports.addMessageReaction = functions.https.onCall(async (data, context) => {
-  console.log(`Reacting to Message: ${JSON.stringify(data)}`)
+exports.addMessageReaction = functions
+  .runWith(HOT_PATH_RUNTIME)
+  .https.onCall(async (data, context) => {
+    console.log(`Reacting to Message: ${JSON.stringify(data)}`)
 
-  const reactionKeys = [
-    'like',
-    'love',
-    'laugh',
-    'angry',
-    'surprised',
-    'cry',
-    'sad',
-  ]
+    const reactionKeys = [
+      'like',
+      'love',
+      'laugh',
+      'angry',
+      'surprised',
+      'cry',
+      'sad',
+    ]
 
-  const { authorID, messageID, reaction, channelID } = data
+    const { authorID, messageID, reaction, channelID } = data
 
-  if (messageID) {
-    const messageDoc = await getDoc(
-      chatChannelsRef.doc(channelID),
-      'messages',
-      messageID,
-    )
-    if (messageDoc.exists) {
-      const message = messageDoc.data()
-
-      const messageReactionsDict = message?.reactions
-        ? message?.reactions
-        : reactionKeys.reduce(
-            (a, v) => ({
-              ...a,
-              [v]: [],
-            }),
-            {},
-          )
-      var newMessageReactionsDict = {}
-      var reactionsCount = message?.reactionsCount ? message?.reactionsCount : 0
-
-      const userReactionKey = reactionKeys?.find(
-        key =>
-          messageReactionsDict[key] &&
-          messageReactionsDict[key]?.includes(authorID),
+    if (messageID) {
+      const messageDoc = await getDoc(
+        chatChannelsRef.doc(channelID),
+        'messages',
+        messageID,
       )
-      if (userReactionKey) {
-        if (userReactionKey === reaction) {
-          newMessageReactionsDict = {
-            ...messageReactionsDict,
-            [userReactionKey]: messageReactionsDict[userReactionKey].filter(
-              userID => userID !== authorID,
-            ),
+      if (messageDoc.exists) {
+        const message = messageDoc.data()
+
+        const messageReactionsDict = message?.reactions
+          ? message?.reactions
+          : reactionKeys.reduce(
+              (a, v) => ({
+                ...a,
+                [v]: [],
+              }),
+              {},
+            )
+        var newMessageReactionsDict = {}
+        var reactionsCount = message?.reactionsCount ? message?.reactionsCount : 0
+
+        const userReactionKey = reactionKeys?.find(
+          key =>
+            messageReactionsDict[key] &&
+            messageReactionsDict[key]?.includes(authorID),
+        )
+        if (userReactionKey) {
+          if (userReactionKey === reaction) {
+            newMessageReactionsDict = {
+              ...messageReactionsDict,
+              [userReactionKey]: messageReactionsDict[userReactionKey].filter(
+                userID => userID !== authorID,
+              ),
+            }
+            reactionsCount -= 1
+          } else {
+            newMessageReactionsDict = {
+              ...messageReactionsDict,
+              [userReactionKey]: messageReactionsDict[userReactionKey].filter(
+                userID => userID !== authorID,
+              ),
+              [reaction]: [...(messageReactionsDict[reaction] || []), authorID],
+            }
           }
-          reactionsCount -= 1
         } else {
           newMessageReactionsDict = {
             ...messageReactionsDict,
-            [userReactionKey]: messageReactionsDict[userReactionKey].filter(
-              userID => userID !== authorID,
-            ),
             [reaction]: [...(messageReactionsDict[reaction] || []), authorID],
           }
+          reactionsCount += 1
         }
-      } else {
-        newMessageReactionsDict = {
-          ...messageReactionsDict,
-          [reaction]: [...(messageReactionsDict[reaction] || []), authorID],
-        }
-        reactionsCount += 1
+
+        await messageDoc.ref.set(
+          {
+            reactions: newMessageReactionsDict,
+            reactionsCount,
+          },
+          { merge: true },
+        )
       }
-
-      await messageDoc.ref.set(
-        {
-          reactions: newMessageReactionsDict,
-          reactionsCount,
-        },
-        { merge: true },
-      )
     }
-  }
 
-  return { success: true }
-})
+    return { success: true }
+  })

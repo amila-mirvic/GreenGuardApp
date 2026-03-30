@@ -76,13 +76,13 @@ const IMConversationView = memo(props => {
       return ''
     }
 
-    const lastMessageSenderId = item?.lastMessageSenderId || item?.senderID
+    const lastMessageSenderId = item?.lastMessageSenderId
     if (lastMessageSenderId && lastMessageSenderId === userID) {
       return `You: ${basePreview}`
     }
 
     return basePreview
-  }, [basePreview, item?.lastMessageSenderId, item?.senderID, userID])
+  }, [basePreview, item?.lastMessageSenderId, userID])
 
   const safeTimestamp = useMemo(() => {
     try {

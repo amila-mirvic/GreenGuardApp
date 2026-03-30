@@ -4,7 +4,12 @@ const Constants = {
 
 const normalizeDocs = snapshot => snapshot?.docs?.map(doc => doc.data()) ?? []
 
-const buildQuery = (collectionRef, sortedByDate = false, limit = null, offset = null) => {
+const buildQuery = (
+  collectionRef,
+  sortedByDate = false,
+  limit = null,
+  offset = null,
+) => {
   let query = sortedByDate
     ? collectionRef.orderBy('createdAt', 'desc')
     : collectionRef.orderBy('__name__')
@@ -31,8 +36,24 @@ exports.getList = async (
   const historicalCollection = docRef.collection(`${collectionName}_historical`)
 
   if (page === -1) {
-    const snapshot = await buildQuery(liveCollection, sortedByDate).get()
-    return normalizeDocs(snapshot)
+    const [liveSnapshot, historicalSnapshot] = await Promise.all([
+      buildQuery(liveCollection, sortedByDate).get(),
+      buildQuery(historicalCollection, sortedByDate).get(),
+    ])
+
+    const liveItems = normalizeDocs(liveSnapshot)
+    const liveIDs = new Set(liveItems.map(item => item?.id).filter(Boolean))
+    const historicalItems = normalizeDocs(historicalSnapshot).filter(
+      item => item?.id && !liveIDs.has(item.id),
+    )
+
+    const combined = [...liveItems, ...historicalItems]
+
+    if (sortedByDate) {
+      combined.sort((a, b) => (b?.createdAt || 0) - (a?.createdAt || 0))
+    }
+
+    return combined
   }
 
   if (page === 0) {
@@ -41,12 +62,26 @@ exports.getList = async (
         ? limit
         : Constants.liveCollectionCountLimit
 
-    const [liveSnapshot, historicalSnapshot] = await Promise.all([
-      buildQuery(liveCollection, sortedByDate, fetchLimit).get(),
-      buildQuery(historicalCollection, sortedByDate, fetchLimit).get(),
-    ])
+    const liveSnapshot = await buildQuery(
+      liveCollection,
+      sortedByDate,
+      fetchLimit,
+    ).get()
 
     const liveItems = normalizeDocs(liveSnapshot)
+
+    if (liveItems.length >= fetchLimit) {
+      return liveItems.slice(0, fetchLimit)
+    }
+
+    const historicalNeeded = Math.max(fetchLimit - liveItems.length, fetchLimit)
+
+    const historicalSnapshot = await buildQuery(
+      historicalCollection,
+      sortedByDate,
+      historicalNeeded,
+    ).get()
+
     const liveIDs = new Set(liveItems.map(item => item?.id).filter(Boolean))
     const historicalItems = normalizeDocs(historicalSnapshot).filter(
       item => item?.id && !liveIDs.has(item.id),
@@ -137,12 +172,15 @@ exports.get = async (docRef, collectionName, id) => {
 
 exports.getCount = async (docRef, collectionName) => {
   const liveCollection = docRef.collection(`${collectionName}_live`)
-  const snapshot = await liveCollection.get()
-  const liveCount = snapshot?.docs?.length || 0
-
   const historicalCollection = docRef.collection(`${collectionName}_historical`)
-  const hSnapshot = await historicalCollection.get()
-  const historicalCount = hSnapshot?.docs?.length || 0
+
+  const [liveSnapshot, historicalSnapshot] = await Promise.all([
+    liveCollection.get(),
+    historicalCollection.get(),
+  ])
+
+  const liveCount = liveSnapshot?.docs?.length || 0
+  const historicalCount = historicalSnapshot?.docs?.length || 0
   return liveCount + historicalCount || 0
 }
 

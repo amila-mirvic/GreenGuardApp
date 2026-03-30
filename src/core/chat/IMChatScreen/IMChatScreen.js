@@ -81,8 +81,10 @@ const IMChatScreen = memo(props => {
   const [isRenameDialogVisible, setIsRenameDialogVisible] = useState(false)
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(-1)
   const [inReplyToItem, setInReplyToItem] = useState(null)
-
   const richTextInputRef = useRef()
+  const latestConversationPreviewMessageIDRef = useRef(null)
+
+  
 
   const {
     createChannel,
@@ -270,6 +272,48 @@ const IMChatScreen = memo(props => {
       configureNavigation(hydratedChannel)
     }
   }, [remoteChannel])
+
+
+    useEffect(() => {
+    const latestMessage =
+      Array.isArray(messages) && messages.length > 0 ? messages[0] : null
+    const channelID =
+      channel?.channelID ||
+      channel?.id ||
+      route?.params?.channel?.channelID ||
+      route?.params?.channel?.id
+
+    if (!latestMessage?.id || !channelID) {
+      return
+    }
+
+    if (latestConversationPreviewMessageIDRef.current === latestMessage.id) {
+      return
+    }
+
+    latestConversationPreviewMessageIDRef.current = latestMessage.id
+
+    const previewText = getPreviewTextFromAnyValue(latestMessage, localized)
+    const safeReadUserIDs = Array.isArray(latestMessage?.readUserIDs)
+      ? latestMessage.readUserIDs
+      : []
+
+    emitConversationPatch({
+      ...(channel || route?.params?.channel || {}),
+      id: channelID,
+      channelID,
+      content: previewText,
+      lastMessage: previewText,
+      lastMessageDate:
+        Number(latestMessage?.createdAt || 0) ||
+        Math.floor(new Date().getTime() / 1000),
+      lastMessageSenderId: latestMessage?.senderID || '',
+      media: latestMessage?.media ?? null,
+      markedAsRead:
+        latestMessage?.senderID === currentUser?.id ||
+        safeReadUserIDs.includes(currentUser?.id),
+    })
+  }, [messages, channel, route?.params?.channel, localized, currentUser?.id])
 
   const channelWithHydratedOtherParticipants = channel => {
     const allParticipants = channel?.participants
