@@ -6,7 +6,7 @@ import {
   ScrollView,
   Platform,
   KeyboardAvoidingView,
-  Keyboard, // ⇐ dodano
+  Keyboard,
 } from 'react-native'
 import { Image } from 'expo-image'
 import * as ImagePicker from 'expo-image-picker'
@@ -21,34 +21,25 @@ import {
   TouchableIcon,
 } from '../../../core/dopebase'
 import { extractSourceFromFile } from '../../../core/helpers/retrieveSource'
-import IMLocationSelectorModal from '../../../core/location/IMLocationSelectorModal/IMLocationSelectorModal'
 import { IMRichTextInput, IMMentionList, EU } from '../../../core/mentions'
 import IMCameraModal from '../../../core/camera/IMCameraModal'
 import dynamicStyles from './styles'
 import { useConfig } from '../../../config'
-import { useSafeAreaInsets } from 'react-native-safe-area-context' // ⇐ dodano
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 const CreatePost = memo(props => {
-  const {
-    onPostDidChange,
-    onSetMedia,
-    onLocationDidChange,
-    user,
-    inputRef,
-    blurInput,
-    friends,
-  } = props
+  const { onPostDidChange, onSetMedia, user, inputRef, blurInput, friends } =
+    props
+
   const { localized } = useTranslations()
   const { theme, appearance } = useTheme()
   const styles = dynamicStyles(theme, appearance)
 
   const config = useConfig()
-  const insets = useSafeAreaInsets() // ⇐ dodano
+  const insets = useSafeAreaInsets()
 
   const { showActionSheetWithOptions } = useActionSheet()
 
-  const [address, setAddress] = useState('')
-  const [locationSelectorVisible, setLocationSelectorVisible] = useState(false)
   const [media, setMedia] = useState([])
   const [mediaSources, setMediaSources] = useState([])
   const [isCameralContainer, setIsCameralContainer] = useState(true)
@@ -59,7 +50,6 @@ const CreatePost = memo(props => {
   const [friendshipData, setFriendshipData] = useState([])
   const editorRef = useRef()
 
-  // ⇐ dodano: offset tastature
   const [keyboardOffset, setKeyboardOffset] = useState(0)
 
   const androidAddPhotoOptions = [
@@ -97,10 +87,11 @@ const CreatePost = memo(props => {
     setFriendshipData(formattedFriends)
   }, [friends])
 
-  // ⇐ dodano: listeneri za tastaturu (iOS koristi *Will*, Android *Did*)
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
 
     const onShow = e => setKeyboardOffset(e?.endCoordinates?.height || 0)
     const onHide = () => setKeyboardOffset(0)
@@ -113,21 +104,6 @@ const CreatePost = memo(props => {
       subHide?.remove?.()
     }
   }, [])
-
-  const onLocationSelectorPress = () => {
-    setLocationSelectorVisible(!locationSelectorVisible)
-  }
-
-  const onLocationSelectorDone = address => {
-    setLocationSelectorVisible(!locationSelectorVisible)
-    setAddress(address)
-    onLocationDidChange(address)
-  }
-
-  const onChangeLocation = address => {
-    setAddress(address)
-    onLocationDidChange(address)
-  }
 
   const onChangeText = ({ displayText, text }) => {
     const mentions = EU.findMentions(text)
@@ -270,7 +246,7 @@ const CreatePost = memo(props => {
   const handleMediaFile = mediaFile => {
     setIsCameraOpen(false)
 
-    let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i // match pattern eg: image/jpeg
+    let pattern = /[a-zA-Z]+\/[A-Za-z0-9]+/i
     let match = pattern.exec(mediaFile.uri)
 
     const newMediaFile = {
@@ -295,12 +271,7 @@ const CreatePost = memo(props => {
     onSetMedia([...slicedMediaSources])
   }
 
-  const onTextFocus = () => {
-    // setIsCameralContainer(false);
-  }
-
   const onToggleImagesContainer = () => {
-    // blurInput();
     toggleImagesContainer()
   }
 
@@ -318,7 +289,6 @@ const CreatePost = memo(props => {
     },
   }
 
-  // Izračun realnog dna: visina tastature minus safe-area
   const bottomForKeyboard = Math.max(keyboardOffset - (insets?.bottom || 0), 0)
 
   return (
@@ -336,9 +306,9 @@ const CreatePost = memo(props => {
           />
           <View style={styles.titleContainer}>
             <Text style={styles.title}>{user.firstName}</Text>
-            <Text style={styles.subtitle}>{address}</Text>
           </View>
         </View>
+
         <View style={styles.postInputContainer}>
           <IMRichTextInput
             richTextInputRef={editorRef}
@@ -357,14 +327,13 @@ const CreatePost = memo(props => {
         </View>
       </View>
 
-      {/* DNO: zalijepljeno uz tastaturu */}
       <View
         style={[
           styles.bottomContainer,
           {
             bottom: bottomForKeyboard,
-            marginBottom: 0,                        
-            paddingBottom: keyboardOffset > 0 ? 0 : undefined, 
+            marginBottom: 0,
+            paddingBottom: keyboardOffset > 0 ? 0 : undefined,
           },
         ]}>
         <View
@@ -410,6 +379,7 @@ const CreatePost = memo(props => {
                 )
               }
             })}
+
             <TouchableOpacity
               onPress={onCameraIconPress}
               style={[styles.imageItemcontainer, styles.imageBackground]}>
@@ -419,6 +389,7 @@ const CreatePost = memo(props => {
               />
             </TouchableOpacity>
           </ScrollView>
+
           <View style={styles.addTitleAndlocationIconContainer}>
             <View style={styles.addTitleContainer}>
               <Text style={styles.addTitle}>
@@ -427,6 +398,7 @@ const CreatePost = memo(props => {
                   : localized('Add photos to your post')}
               </Text>
             </View>
+
             <View style={styles.iconsContainer}>
               <TouchableIcon
                 onPress={onToggleImagesContainer}
@@ -439,14 +411,9 @@ const CreatePost = memo(props => {
                 ]}
                 iconSource={theme.icons.cameraFilled}
               />
-              <TouchableIcon
-                containerStyle={styles.iconContainer}
-                imageStyle={[styles.icon, styles.pinpointTintColor]}
-                iconSource={theme.icons.pinpoint}
-                onPress={onLocationSelectorPress}
-              />
             </View>
           </View>
+
           <IMMentionList
             list={friendshipData}
             keyword={keyword}
@@ -456,7 +423,6 @@ const CreatePost = memo(props => {
         </View>
       </View>
 
-      {/* Spacer potpuno gasimo dok je tastatura otvorena */}
       <View
         style={[
           styles.blankBottom,
@@ -464,13 +430,6 @@ const CreatePost = memo(props => {
         ]}
       />
 
-      <IMLocationSelectorModal
-        isVisible={locationSelectorVisible}
-        onCancel={onLocationSelectorPress}
-        onDone={onLocationSelectorDone}
-        onChangeLocation={onChangeLocation}
-        apiKey={config.googleAPIKey}
-      />
       <IMCameraModal
         wrapInModal={true}
         isCameraOpen={isCameraOpen}

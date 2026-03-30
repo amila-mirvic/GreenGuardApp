@@ -23,6 +23,44 @@ const collectionsUtils = require('../core/collections')
 
 const { add, get, remove, getList, getCount } = collectionsUtils
 
+const usersRef = db.collection('users')
+
+const normalizeSearchText = user => {
+  const firstName = user?.firstName || ''
+  const lastName = user?.lastName || ''
+  const email = user?.email || ''
+  const username = user?.username || ''
+  return `${firstName} ${lastName} ${email} ${username}`.trim().toLowerCase()
+}
+
+const getExistingFriendshipIDs = async userID => {
+  try {
+    const [liveSnapshot, historicalSnapshot] = await Promise.all([
+      socialGraphRef.doc(userID).collection('friendships_live').get(),
+      socialGraphRef.doc(userID).collection('friendships_historical').get(),
+    ])
+
+    const ids = new Set()
+
+    liveSnapshot?.docs?.forEach(doc => {
+      if (doc?.id) {
+        ids.add(doc.id)
+      }
+    })
+
+    historicalSnapshot?.docs?.forEach(doc => {
+      if (doc?.id) {
+        ids.add(doc.id)
+      }
+    })
+
+    return ids
+  } catch (error) {
+    console.log('getExistingFriendshipIDs error:', error)
+    return new Set()
+  }
+}
+
 exports.add = functions
   .runWith({
     minInstances: 1,
@@ -76,7 +114,6 @@ exports.add = functions
     await hydrateHomeFeedsOnAddFriend(sourceUserID, destUserID)
     await hydrateStoryFeedsOnAddFriend(sourceUserID, destUserID)
 
-    // TODO: send push notification based on social graph type
     return { success: true }
   })
 
@@ -92,7 +129,6 @@ exports.unfollow = functions.https.onCall(async (data, context) => {
   return unfollowEdge(sourceUserID, destUserID)
 })
 
-// mutual friendships => friends
 exports.fetchFriends = functions
   .runWith({
     minInstances: 1,
@@ -116,7 +152,6 @@ exports.fetchFriends = functions
     }
   })
 
-// all - inbound, outbound and mutual friendships
 exports.fetchFriendships = functions
   .runWith({
     minInstances: 1,
@@ -140,13 +175,12 @@ exports.fetchFriendships = functions
     }
   })
 
-// all - inbound, outbound or mutual friendships (dictated by type param) of userID, but with the following actions of viewerID (e.g. someone else's friends, someone else's followers, etc.)
 exports.fetchOtherUserFriendships = functions.https.onCall(
   async (data, context) => {
     const { viewerID, userID, type, page, size } = data
 
-    const harshedViewerBlockedUsers = await getAllUsersBlockedByMe(viewerID) // List of users the viewer is blocking
-    const harshedUsersBlockingViewers = await getAllUsersBlockingMe(viewerID) // List of users who have blocked the viewer
+    const harshedViewerBlockedUsers = await getAllUsersBlockedByMe(viewerID)
+    const harshedUsersBlockingViewers = await getAllUsersBlockingMe(viewerID)
 
     const collectionName =
       type === 'reciprocal'
@@ -204,49 +238,61 @@ exports.fetchOtherUserFriendships = functions.https.onCall(
   },
 )
 
-// search by keyword users who are not in the friendships set already
 exports.searchUsers = functions
   .runWith({
     minInstances: 1,
   })
   .https.onCall(async (data, context) => {
-    const searchPageLimit = 100 // never return more users than this limit
+    const searchPageLimit = 100
+    const { userID, keyword } = data
 
-    const { userID, keyword, page, size } = data
     console.log(`searching users `)
     console.log(JSON.stringify(data))
-    const usersRef = db.collection('users')
 
-    const harshedViewerBlockedUsers = await getAllUsersBlockedByMe(userID) // List of users the viewer is blocking
-    const harshedUsersBlockingViewers = await getAllUsersBlockingMe(userID) // List of users who have blocked the viewer
+    const normalizedKeyword = (keyword || '').trim().toLowerCase()
 
-    const usersSnapshot = await usersRef.get()
-    const users = usersSnapshot?.docs?.map(doc => doc.data())
+    const [harshedViewerBlockedUsers, harshedUsersBlockingViewers, friendshipIDs] =
+      await Promise.all([
+        getAllUsersBlockedByMe(userID),
+        getAllUsersBlockingMe(userID),
+        getExistingFriendshipIDs(userID),
+      ])
+
+    let users = []
+
+    if (!normalizedKeyword.length) {
+      const snapshot = await usersRef
+        .orderBy('firstName', 'asc')
+        .limit(searchPageLimit * 3)
+        .get()
+
+      users = snapshot?.docs?.map(doc => doc.data()) ?? []
+    } else {
+      const snapshot = await usersRef.get()
+      users = snapshot?.docs?.map(doc => doc.data()) ?? []
+    }
+
     const filteredUsers = users.filter(user => {
-      const fullName = `${user.firstName} ${user.lastName} ${user.email}`
-      return (
-        user?.id &&
-        !harshedViewerBlockedUsers[user?.id] &&
-        !harshedUsersBlockingViewers[user?.id] &&
-        user?.id !== userID &&
-        fullName &&
-        fullName.toLowerCase().indexOf(keyword.toLowerCase()) >= 0
-      )
-    })
-    const promises = filteredUsers.map(async user => {
-      const friendship = await get(
-        socialGraphRef.doc(userID),
-        'friendships',
-        user.id,
-      )
-      if (!friendship) {
-        return user
+      if (!user?.id || user.id === userID) {
+        return false
       }
-      return null
+
+      if (harshedViewerBlockedUsers[user.id] || harshedUsersBlockingViewers[user.id]) {
+        return false
+      }
+
+      if (friendshipIDs.has(user.id)) {
+        return false
+      }
+
+      if (!normalizedKeyword.length) {
+        return true
+      }
+
+      return normalizeSearchText(user).includes(normalizedKeyword)
     })
-    const nonFriendUsers = await Promise.all(promises)
-    const nonNullUsers = nonFriendUsers.filter(user => !!user)
-    const finalUsers = nonNullUsers.slice(0, searchPageLimit)
+
+    const finalUsers = filteredUsers.slice(0, searchPageLimit)
 
     if (finalUsers?.length > 0) {
       console.log(`searched users : `)

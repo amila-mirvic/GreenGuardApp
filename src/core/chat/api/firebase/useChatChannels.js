@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   subscribeChannels as subscribeChannelsAPI,
   listChannels as listChannelsAPI,
@@ -9,6 +9,7 @@ import {
   deleteGroup as deleteGroupAPI,
   markUserAsTypingInChannel as markUserAsTypingInChannelAPI,
 } from './firebaseChatClient'
+import { subscribeConversationPatch } from '../../chatRealtimeEvents'
 
 const getChannelID = item => item?.id || item?.channelID
 
@@ -131,6 +132,29 @@ export const useChatChannels = () => {
   const pagination = useRef({ page: 0, size: 25, exhausted: false })
   const realtimeChannelsRef = useRef([])
   const semaphores = useRef({ isMarkingAsTyping: false })
+
+  useEffect(() => {
+    const unsubscribe = subscribeConversationPatch(incomingPatch => {
+      const normalizedPatch = normalizeChannel(incomingPatch)
+      if (!normalizedPatch) {
+        return
+      }
+
+      realtimeChannelsRef.current = mergeChannelLists(
+        realtimeChannelsRef.current,
+        [normalizedPatch],
+        false,
+      )
+
+      setChannels(oldChannels =>
+        mergeChannelLists(oldChannels, [normalizedPatch], false),
+      )
+    })
+
+    return () => {
+      unsubscribe && unsubscribe()
+    }
+  }, [])
 
   const loadMoreChannels = async userID => {
     if (!userID || pagination.current.exhausted || loadingBottom) {

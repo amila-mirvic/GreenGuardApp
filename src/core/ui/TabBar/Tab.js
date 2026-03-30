@@ -28,7 +28,7 @@ function Tab({ route, onPress, focus, tabIcons, showBadge }) {
               width: 12,
               height: 12,
               borderRadius: 6,
-              backgroundColor: '#2f8f62',
+              backgroundColor: '#1F6A45',
             }}
           />
         )}

@@ -35,13 +35,13 @@ function IMUserSearchModal(props) {
   }, [])
 
   useEffect(() => {
-    const trimmed = keyword.trim()
-    if (!trimmed.length) {
-      search('')
+    if (!currentUser?.id) {
       return
     }
+
+    const trimmed = keyword.trim()
     search(trimmed)
-  }, [keyword])
+  }, [keyword, currentUser?.id, search])
 
   const renderItem = ({ item, index }) => (
     <IMFriendItem

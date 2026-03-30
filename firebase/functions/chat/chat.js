@@ -17,7 +17,6 @@ const { createChannel, insertMessage } = require('./utils')
 
 const { hydrateChatFeedsForAllParticipants } = require('./utils')
 
-
 exports.createChannel = functions.https.onCall(async (data, context) => {
   return await createChannel(data)
 })
@@ -35,7 +34,6 @@ exports.markAsRead = functions
     const dedupedReadUserIDs = [...new Set(readUserIDs)]
 
     if (messageID) {
-      // update the array of readUserIDs for the last message in the channel (used for seen status facepile in chat room)
       const doc = await getDoc(
         chatChannelsRef.doc(channelID),
         'messages',
@@ -47,10 +45,8 @@ exports.markAsRead = functions
       }
     }
 
-    // mark last message as read in the channel (used for seen status in Home)
     const channel = await chatChannelsRef.doc(channelID).get()
     if (channel.exists) {
-      // we only update readUserIDs if the channel exists already
       chatChannelsRef.doc(channelID).set(
         {
           readUserIDs: dedupedReadUserIDs,
@@ -59,7 +55,6 @@ exports.markAsRead = functions
       )
     }
 
-    // mark last message as read in the user's feed (used for bolding out unread messages on home screen)
     await add(socialFeedsRef.doc(userID), 'chat_feed', {
       id: channelID,
       markedAsRead: true,
@@ -80,7 +75,6 @@ exports.markUserAsTypingInChannel = functions
     const channel = await chatChannelsRef.doc(channelID).get()
 
     if (channel.exists) {
-      // we only update typingUsers if the channel exists already
       const channelData = channel.data()
       var typingUsers = (channelData ? channelData.typingUsers : {}) ?? {}
       typingUsers[userID] = {
@@ -97,26 +91,30 @@ exports.markUserAsTypingInChannel = functions
     return { success: true }
   })
 
-exports.listMessages = functions.https.onCall(async (data, context) => {
-  const { channelID, page, size } = data
-  console.log(`fetching messages `)
-  console.log(JSON.stringify(data))
+exports.listMessages = functions
+  .runWith({
+    minInstances: 1,
+  })
+  .https.onCall(async (data, context) => {
+    const { channelID, page, size } = data
+    console.log(`fetching messages `)
+    console.log(JSON.stringify(data))
 
-  const messages = await getList(
-    chatChannelsRef.doc(channelID),
-    'messages',
-    page,
-    size,
-    true,
-  )
-  if (messages?.length > 0) {
-    console.log(`fetched messages: `)
-    console.log(messages)
-    return { messages, success: true }
-  } else {
-    return { messages: [], success: true }
-  }
-})
+    const messages = await getList(
+      chatChannelsRef.doc(channelID),
+      'messages',
+      page,
+      size,
+      true,
+    )
+    if (messages?.length > 0) {
+      console.log(`fetched messages: `)
+      console.log(messages)
+      return { messages, success: true }
+    } else {
+      return { messages: [], success: true }
+    }
+  })
 
 exports.insertMessage = functions
   .runWith({
@@ -126,33 +124,32 @@ exports.insertMessage = functions
     return await insertMessage(data)
   })
 
-
-
 exports.deleteMessage = functions.https.onCall(async (data, context) => {
   const { channelID, messageID } = data
 
   await remove(chatChannelsRef.doc(channelID), 'messages', messageID, true)
   console.log(`Delete message ${messageID}`)
 
-  // We've removed the message, and now we need to update the channel metadata, and hydrate all social chat feeds of the participants
-
-  // First, we find the message that was previously posted in the thread (e.g. the new "last message"), so we can update the chat previews. We consider both the live and historical collections to make sure we get the latest message
   const liveMessageSnapshot = await chatChannelsRef
     .doc(channelID)
     .collection('messages_live')
     .orderBy('createdAt', 'desc')
     .limit(1)
     .get()
+
   const historicalMessageSnapshot = await chatChannelsRef
     .doc(channelID)
     .collection('messages_historical')
     .orderBy('createdAt', 'desc')
     .limit(1)
     .get()
+
   var lastMessage = null
+
   if (liveMessageSnapshot?.docs?.length > 0) {
     lastMessage = liveMessageSnapshot.docs[0].data()
   }
+
   if (historicalMessageSnapshot?.docs?.length > 0) {
     const tempMessage = historicalMessageSnapshot.docs[0].data()
     if (lastMessage) {
@@ -164,6 +161,7 @@ exports.deleteMessage = functions.https.onCall(async (data, context) => {
       lastMessage = tempMessage
     }
   }
+
   var updatedMetadata = {
     lastMessage: '',
     lastMessageDate: '',
@@ -171,47 +169,51 @@ exports.deleteMessage = functions.https.onCall(async (data, context) => {
     lastThreadMessageId: '',
     readUserIDs: [],
   }
+
   if (lastMessage) {
     updatedMetadata = {
       lastMessage:
-        lastMessage.content.length > 0
-          ? lastMessage.content
-          : lastMessage.media,
+        lastMessage.content?.length > 0 ? lastMessage.content : lastMessage.media,
       lastMessageDate: lastMessage.createdAt,
       lastMessageSenderId: lastMessage.senderID,
-      lastThreadMessageId: lastMessage._id,
+      lastThreadMessageId: lastMessage.id || lastMessage._id || '',
       readUserIDs: [lastMessage.senderID],
     }
   }
-  // We update channel's metadata afected by the new message
+
   await chatChannelsRef.doc(channelID).set(updatedMetadata, { merge: true })
 
-  // Then we hydrate all the participants' chat feeds
-  await hydrateChatFeedsForAllParticipants(channelID, messageData)
+  if (lastMessage) {
+    await hydrateChatFeedsForAllParticipants(channelID, lastMessage)
+  }
 
   return { success: true }
 })
 
-exports.listChannels = functions.https.onCall(async (data, context) => {
-  const { userID, page, size } = data
-  console.log(`fetching chat channels `)
-  console.log(JSON.stringify(data))
+exports.listChannels = functions
+  .runWith({
+    minInstances: 1,
+  })
+  .https.onCall(async (data, context) => {
+    const { userID, page, size } = data
+    console.log(`fetching chat channels `)
+    console.log(JSON.stringify(data))
 
-  const channels = await getList(
-    socialFeedsRef.doc(userID),
-    'chat_feed',
-    page,
-    size,
-    true,
-  )
-  if (channels?.length > 0) {
-    console.log(`fetched channels: `)
-    console.log(JSON.stringify(channels))
-    return { channels, success: true }
-  } else {
-    return { channels: [], success: true }
-  }
-})
+    const channels = await getList(
+      socialFeedsRef.doc(userID),
+      'chat_feed',
+      page,
+      size,
+      true,
+    )
+    if (channels?.length > 0) {
+      console.log(`fetched channels: `)
+      console.log(JSON.stringify(channels))
+      return { channels, success: true }
+    } else {
+      return { channels: [], success: true }
+    }
+  })
 
 exports.addMessageReaction = functions.https.onCall(async (data, context) => {
   console.log(`Reacting to Message: ${JSON.stringify(data)}`)
@@ -255,140 +257,40 @@ exports.addMessageReaction = functions.https.onCall(async (data, context) => {
           messageReactionsDict[key]?.includes(authorID),
       )
       if (userReactionKey) {
-        // This user already had a reaction on this post in the past, so we remove it or replace it
         if (userReactionKey === reaction) {
-          // The reaction is the same, so we remove it
-          newMessageReactionsDict = { ...messageReactionsDict }
-          newMessageReactionsDict[userReactionKey] = messageReactionsDict[
-            userReactionKey
-          ].filter(id => id !== authorID)
-          reactionsCount = reactionsCount - 1
+          newMessageReactionsDict = {
+            ...messageReactionsDict,
+            [userReactionKey]: messageReactionsDict[userReactionKey].filter(
+              userID => userID !== authorID,
+            ),
+          }
+          reactionsCount -= 1
         } else {
-          // The reaction is different, so we replace it
-          newMessageReactionsDict = { ...messageReactionsDict }
-          newMessageReactionsDict[userReactionKey] = messageReactionsDict[
-            userReactionKey
-          ].filter(id => id !== authorID) // remove the old reaction
-          newMessageReactionsDict[reaction] = [
-            ...newMessageReactionsDict[reaction],
-            authorID,
-          ] // add the new reaction
+          newMessageReactionsDict = {
+            ...messageReactionsDict,
+            [userReactionKey]: messageReactionsDict[userReactionKey].filter(
+              userID => userID !== authorID,
+            ),
+            [reaction]: [...(messageReactionsDict[reaction] || []), authorID],
+          }
         }
       } else {
-        // This user had no reaction on this post in the past, so we add it
-        newMessageReactionsDict = { ...messageReactionsDict }
-        newMessageReactionsDict[reaction] = [
-          ...newMessageReactionsDict[reaction],
-          authorID,
-        ] // add the new reaction
-        reactionsCount = reactionsCount + 1
-      }
-      const newMessageData = {
-        reactions: newMessageReactionsDict,
-        reactionsCount,
+        newMessageReactionsDict = {
+          ...messageReactionsDict,
+          [reaction]: [...(messageReactionsDict[reaction] || []), authorID],
+        }
+        reactionsCount += 1
       }
 
-      if (messageDoc?.ref) {
-        messageDoc.ref.set(newMessageData, { merge: true })
-      }
-      return { ...message, ...newMessageData }
-    }
-  } else {
-    return { success: false }
-  }
-})
-
-exports.updateGroup = functions.https.onCall(async (data, context) => {
-  console.log('Renaming group: ')
-  console.log(JSON.stringify(data))
-
-  const { channelID, userID, channelData } = data
-  const { content, ...rest } = channelData
-  const user = await fetchUser(userID)
-
-  await chatChannelsRef.doc(channelID).set(rest, { merge: true })
-
-  await hydrateChatFeedsForAllParticipants(
-    channelID,
-    {
-      createdAt: Math.floor(new Date().getTime() / 1000),
-      senderID: userID,
-      content: content,
-      // content: `${user?.firstName ?? 'Someone'} has renamed the group.`,
-    },
-    false,
-  )
-
-  return { success: true }
-})
-
-exports.deleteGroup = functions.https.onCall(async (data, context) => {
-  console.log('Deleting group: ')
-  console.log(JSON.stringify(data))
-
-  const { channelID } = data
-  const channelDoc = await chatChannelsRef.doc(channelID).get()
-  if (channelDoc.exists) {
-    const channel = channelDoc.data()
-    const { participants } = channel
-    const promises = participants?.map(async participant => {
-      // we update the chat feed for all the other participants
-      const participantID = participant?.id
-      await remove(
-        socialFeedsRef.doc(participantID),
-        'chat_feed',
-        channelID,
-        true,
-      )
-      return true
-    })
-    await Promise.all(promises)
-    await chatChannelsRef.doc(channelID).delete()
-    await deleteCollection(
-      db,
-      chatChannelsRef.doc(channelID).collection('messages_live'),
-    )
-    await deleteCollection(
-      db,
-      chatChannelsRef.doc(channelID).collection('messages_historical'),
-    )
-  }
-
-  return { success: true }
-})
-
-exports.leaveGroup = functions.https.onCall(async (data, context) => {
-  console.log('Leaving group: ')
-  console.log(JSON.stringify(data))
-
-  const { channelID, userID, content } = data
-  const channelDocRef = chatChannelsRef.doc(channelID)
-  const channelDoc = await channelDocRef.get()
-  console.log('Leaving group get doc:', channelDoc.exists)
-  if (channelDoc.exists) {
-    const channel = channelDoc.data()
-    const { participants, admins } = channel
-    const newParticipants = participants.filter(p => p?.id !== userID)
-    const newAdmins = admins.filter(p => p !== userID)
-    await chatChannelsRef
-      .doc(channelID)
-      .set(
-        { participants: newParticipants, admins: newAdmins },
+      await messageDoc.ref.set(
+        {
+          reactions: newMessageReactionsDict,
+          reactionsCount,
+        },
         { merge: true },
       )
+    }
   }
-
-  await hydrateChatFeedsForAllParticipants(
-    channelID,
-    {
-      createdAt: Math.floor(new Date().getTime() / 1000),
-      senderID: userID,
-      content: content,
-    },
-    false,
-  )
-
-  await remove(socialFeedsRef.doc(userID), 'chat_feed', channelID, true)
 
   return { success: true }
 })
